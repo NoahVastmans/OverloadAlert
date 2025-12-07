@@ -1,7 +1,9 @@
 package kth.nova.overloadalert.data.remote
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 
+@JsonClass(generateAdapter = true)
 data class StravaActivityResponse(
     @field:Json(name = "id") val id: Long,
     @field:Json(name = "distance") val distance: Float, // in meters

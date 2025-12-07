@@ -1,8 +1,22 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+}
+
+// Load local properties
+val localProperties = Properties()
+try {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localProperties.load(FileInputStream(localPropertiesFile))
+    }
+} catch (e: Exception) {
+    // Ignore
 }
 
 android {
@@ -19,6 +33,12 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Read Strava credentials from local.properties and trim quotes
+        val stravaClientId = (localProperties.getProperty("STRAVA_CLIENT_ID") ?: "").trim('"')
+        val stravaClientSecret = (localProperties.getProperty("STRAVA_CLIENT_SECRET") ?: "").trim('"')
+        buildConfigField("String", "STRAVA_CLIENT_ID", "\"$stravaClientId\"")
+        buildConfigField("String", "STRAVA_CLIENT_SECRET", "\"$stravaClientSecret\"")
     }
 
     buildTypes {
@@ -39,6 +59,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -61,6 +82,7 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.moshi.kotlin)
     implementation(libs.converter.moshi)
+    ksp(libs.moshi.codegen) // Use KSP for Moshi code generation
 
     // ViewModel and Navigation Compose
     implementation(libs.androidx.lifecycle.viewmodel.compose)
