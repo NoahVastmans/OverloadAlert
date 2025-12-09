@@ -5,7 +5,7 @@ import kth.nova.overloadalert.domain.model.RunAnalysis
 import java.time.LocalDate
 import java.time.OffsetDateTime
 
-class AnalyzeRunDataUseCase {
+class AnalyzeRunData {
 
     operator fun invoke(runs: List<Run>): RunAnalysis {
         if (runs.isEmpty()) {

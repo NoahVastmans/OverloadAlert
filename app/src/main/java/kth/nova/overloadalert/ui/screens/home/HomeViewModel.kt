@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kth.nova.overloadalert.data.RunningRepository
-import kth.nova.overloadalert.domain.usecases.AnalyzeRunDataUseCase
+import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 
 class HomeViewModel(
     private val runningRepository: RunningRepository,
-    private val analyzeRunDataUseCase: AnalyzeRunDataUseCase
+    private val analyzeRunData: AnalyzeRunData
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -28,7 +28,7 @@ class HomeViewModel(
             _uiState.update { it.copy(isLoading = true) }
             try {
                 val runs = runningRepository.getRunsForLast30Days(forceRefresh)
-                val analysis = analyzeRunDataUseCase(runs)
+                val analysis = analyzeRunData(runs)
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -54,11 +54,11 @@ class HomeViewModel(
     companion object {
         fun provideFactory(
             runningRepository: RunningRepository,
-            analyzeRunDataUseCase: AnalyzeRunDataUseCase
+            analyzeRunData: AnalyzeRunData
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return HomeViewModel(runningRepository, analyzeRunDataUseCase) as T
+                return HomeViewModel(runningRepository, analyzeRunData) as T
             }
         }
     }
