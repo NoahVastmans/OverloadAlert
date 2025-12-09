@@ -27,7 +27,7 @@ class HomeViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
-                val runs = runningRepository.getRunsForLast30Days(forceRefresh)
+                val runs = runningRepository.getRunsForAnalysis(forceRefresh)
                 val analysis = analyzeRunData(runs)
                 _uiState.update {
                     it.copy(

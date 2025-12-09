@@ -13,15 +13,15 @@ class RunningRepository(
 ) {
 
     /**
-     * Fetches the runs for the last 30 days with an optimized refresh strategy.
-     * If the local database is empty, it performs a full 30-day sync.
+     * Fetches runs for analysis with an optimized refresh strategy.
+     * If the local database is empty, it performs a full 60-day sync.
      * For subsequent refreshes (forced or stale), it only fetches the last 5 days.
      */
-    suspend fun getRunsForLast30Days(forceRefresh: Boolean = false): List<Run> {
-        val thirtyDaysAgoDate = LocalDate.now().minusDays(30)
-        val thirtyDaysAgoString = thirtyDaysAgoDate.toString()
+    suspend fun getRunsForAnalysis(forceRefresh: Boolean = false): List<Run> {
+        val sixtyDaysAgoDate = LocalDate.now().minusDays(60)
+        val sixtyDaysAgoString = sixtyDaysAgoDate.toString()
 
-        val localRuns = runDao.getRunsSince(thirtyDaysAgoString)
+        val localRuns = runDao.getRunsSince(sixtyDaysAgoString)
 
         val lastSync = tokenManager.getLastSyncTimestamp()
         val isCacheStale = (System.currentTimeMillis() - lastSync) > 3600 * 1000 // 1 hour
@@ -30,7 +30,7 @@ class RunningRepository(
 
         if (shouldSync) {
             // Determine the date range for the sync
-            val daysToFetch = if (localRuns.isEmpty()) 30L else 5L
+            val daysToFetch = if (localRuns.isEmpty()) 60L else 5L
             val fetchSinceDate = LocalDate.now().minusDays(daysToFetch)
 
             val nowEpoch = LocalDate.now().plusDays(1).atStartOfDay().toEpochSecond(ZoneOffset.UTC)
@@ -39,7 +39,7 @@ class RunningRepository(
             val remoteActivities = stravaApiService.getActivities(
                 before = nowEpoch,
                 after = fetchSinceEpoch,
-                perPage = 100
+                perPage = 200 // Increase page size to accommodate more data
             )
 
             val newRuns = remoteActivities
@@ -60,8 +60,8 @@ class RunningRepository(
             
             tokenManager.saveLastSyncTimestamp(System.currentTimeMillis())
             
-            // After syncing, return the fresh data for the last 30 days from the local DB
-            return runDao.getRunsSince(thirtyDaysAgoString)
+            // After syncing, return the fresh data for the last 60 days from the local DB
+            return runDao.getRunsSince(sixtyDaysAgoString)
         }
 
         // If no sync was needed, return the runs from the local cache
