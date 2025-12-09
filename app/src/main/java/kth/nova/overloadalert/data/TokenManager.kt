@@ -43,6 +43,14 @@ class TokenManager(context: Context) {
         return sharedPreferences.getLong("expires_at", 0L)
     }
 
+    fun saveLastSyncTimestamp(timestamp: Long) {
+        sharedPreferences.edit().putLong("last_sync_timestamp", timestamp).apply()
+    }
+
+    fun getLastSyncTimestamp(): Long {
+        return sharedPreferences.getLong("last_sync_timestamp", 0L)
+    }
+
     fun clearTokens() {
         sharedPreferences.edit().clear().apply()
     }

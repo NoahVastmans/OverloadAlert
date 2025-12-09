@@ -8,30 +8,42 @@ import java.time.ZoneOffset
 
 class RunningRepository(
     private val runDao: RunDao,
-    private val stravaApiService: StravaApiService
+    private val stravaApiService: StravaApiService,
+    private val tokenManager: TokenManager
 ) {
 
-    suspend fun getRunsForLast30Days(): List<Run> {
+    /**
+     * Fetches the runs for the last 30 days with an optimized refresh strategy.
+     * If the local database is empty, it performs a full 30-day sync.
+     * For subsequent refreshes (forced or stale), it only fetches the last 5 days.
+     */
+    suspend fun getRunsForLast30Days(forceRefresh: Boolean = false): List<Run> {
         val thirtyDaysAgoDate = LocalDate.now().minusDays(30)
         val thirtyDaysAgoString = thirtyDaysAgoDate.toString()
 
         val localRuns = runDao.getRunsSince(thirtyDaysAgoString)
 
-        // If the local database is empty for the period, fetch from the remote API.
-        // A more advanced implementation could check the age of the most recent data point.
-        if (localRuns.isEmpty()) {
-            val nowEpoch = LocalDate.now().plusDays(1).atStartOfDay().toEpochSecond(ZoneOffset.UTC)
-            val thirtyDaysAgoEpoch = thirtyDaysAgoDate.atStartOfDay().toEpochSecond(ZoneOffset.UTC)
+        val lastSync = tokenManager.getLastSyncTimestamp()
+        val isCacheStale = (System.currentTimeMillis() - lastSync) > 3600 * 1000 // 1 hour
 
-            // Let exceptions propagate to the ViewModel to be handled.
+        val shouldSync = forceRefresh || localRuns.isEmpty() || isCacheStale
+
+        if (shouldSync) {
+            // Determine the date range for the sync
+            val daysToFetch = if (localRuns.isEmpty()) 30L else 5L
+            val fetchSinceDate = LocalDate.now().minusDays(daysToFetch)
+
+            val nowEpoch = LocalDate.now().plusDays(1).atStartOfDay().toEpochSecond(ZoneOffset.UTC)
+            val fetchSinceEpoch = fetchSinceDate.atStartOfDay().toEpochSecond(ZoneOffset.UTC)
+
             val remoteActivities = stravaApiService.getActivities(
                 before = nowEpoch,
-                after = thirtyDaysAgoEpoch,
-                perPage = 100 // Fetch a reasonable number of activities for the period
+                after = fetchSinceEpoch,
+                perPage = 100
             )
 
             val newRuns = remoteActivities
-                .filter { it.type == "Run" || it.type == "Walk" } // We only care about runs and walks
+                .filter { it.type == "Run" || it.type == "Walk" }
                 .map {
                     Run(
                         id = it.id,
@@ -41,11 +53,25 @@ class RunningRepository(
                     )
                 }
 
-            // Cache the result, even if it's an empty list (meaning no runs in the period).
-            runDao.insertAll(newRuns)
-            return newRuns
+            // Insert or update the new runs into the database
+            if (newRuns.isNotEmpty()) {
+                runDao.insertAll(newRuns)
+            }
+            
+            tokenManager.saveLastSyncTimestamp(System.currentTimeMillis())
+            
+            // After syncing, return the fresh data for the last 30 days from the local DB
+            return runDao.getRunsSince(thirtyDaysAgoString)
         }
 
+        // If no sync was needed, return the runs from the local cache
         return localRuns
+    }
+
+    /**
+     * Gets all runs stored in the local database.
+     */
+    suspend fun getAllRuns(): List<Run> {
+        return runDao.getAllRuns()
     }
 }

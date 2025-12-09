@@ -72,6 +72,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended) // Add extended icons
 
     // Room
     implementation(libs.androidx.room.runtime)
@@ -82,7 +83,7 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.moshi.kotlin)
     implementation(libs.converter.moshi)
-    ksp(libs.moshi.codegen) // Use KSP for Moshi code generation
+    ksp(libs.moshi.codegen)
 
     // ViewModel and Navigation Compose
     implementation(libs.androidx.lifecycle.viewmodel.compose)

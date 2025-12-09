@@ -14,6 +14,9 @@ interface RunDao {
     @Query("SELECT * FROM runs WHERE startDateLocal >= :sinceDate ORDER BY startDateLocal DESC")
     suspend fun getRunsSince(sinceDate: String): List<Run>
 
+    @Query("SELECT * FROM runs ORDER BY startDateLocal DESC")
+    suspend fun getAllRuns(): List<Run>
+
     @Query("DELETE FROM runs")
     suspend fun clearAll()
 }
