@@ -1,5 +1,6 @@
 package kth.nova.overloadalert.ui.screens.history
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Scaffold
@@ -20,9 +22,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kth.nova.overloadalert.data.local.Run
+import kth.nova.overloadalert.domain.model.AnalyzedRun
+import kth.nova.overloadalert.domain.model.RiskLevel
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 
@@ -46,7 +51,7 @@ fun HistoryScreen(viewModel: HistoryViewModel) {
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
-                uiState.runs.isEmpty() -> {
+                uiState.analyzedRuns.isEmpty() -> {
                     Text(
                         text = "No run history found.",
                         modifier = Modifier.align(Alignment.Center)
@@ -54,8 +59,8 @@ fun HistoryScreen(viewModel: HistoryViewModel) {
                 }
                 else -> {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(uiState.runs) { run ->
-                            RunHistoryItem(run = run)
+                        items(uiState.analyzedRuns) { analyzedRun ->
+                            RunHistoryItem(analyzedRun = analyzedRun)
                             HorizontalDivider()
                         }
                     }
@@ -66,7 +71,10 @@ fun HistoryScreen(viewModel: HistoryViewModel) {
 }
 
 @Composable
-fun RunHistoryItem(run: Run) {
+fun RunHistoryItem(analyzedRun: AnalyzedRun) {
+    val run = analyzedRun.run
+    val riskLevel = analyzedRun.riskAssessment.riskLevel
+
     val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy")
     val runDate = OffsetDateTime.parse(run.startDateLocal).format(dateFormatter)
 
@@ -74,10 +82,17 @@ fun RunHistoryItem(run: Run) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = runDate, fontSize = 16.sp)
+        // Date and Risk Tag
+        Column(horizontalAlignment = Alignment.Start, modifier = Modifier.weight(1f)) {
+            Text(text = runDate, fontSize = 16.sp)
+            RiskTag(riskLevel = riskLevel)
+        }
+
+        Spacer(Modifier.width(16.dp))
+
+        // Distance and Time
         Column(horizontalAlignment = Alignment.End) {
             val distanceInKm = run.distance / 1000f
             Text(text = String.format("%.2f km", distanceInKm), fontSize = 16.sp)
@@ -87,8 +102,35 @@ fun RunHistoryItem(run: Run) {
             val seconds = run.movingTime % 60
             Text(
                 text = String.format("%d:%02d:%02d", hours, minutes, seconds),
-                fontSize = 14.sp
+                fontSize = 14.sp,
+                color = Color.Gray
             )
         }
+    }
+}
+
+@Composable
+fun RiskTag(riskLevel: RiskLevel) {
+    val tagColor = when (riskLevel) {
+        RiskLevel.NONE -> Color(0xFF2E7D32) // Dark Green
+        RiskLevel.MODERATE -> Color(0xFFF9A825) // Amber
+        RiskLevel.HIGH -> Color(0xFFEF6C00)     // Orange
+        RiskLevel.VERY_HIGH -> Color(0xFFC62828) // Red
+    }
+
+    val text = if (riskLevel == RiskLevel.NONE) "NO RISK" else riskLevel.name.replace("_", " ")
+
+    Box(
+        modifier = Modifier
+            .padding(top = 4.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(tagColor)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = text,
+            color = Color.White,
+            fontSize = 10.sp
+        )
     }
 }

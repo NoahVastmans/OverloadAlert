@@ -88,6 +88,6 @@ class AppComponent(context: Context) {
     }
 
     val historyViewModelFactory: ViewModelProvider.Factory by lazy {
-        HistoryViewModel.provideFactory(runningRepository)
+        HistoryViewModel.provideFactory(runningRepository, analyzeRunData)
     }
 }

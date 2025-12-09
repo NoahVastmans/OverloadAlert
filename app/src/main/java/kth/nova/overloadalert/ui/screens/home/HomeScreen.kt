@@ -113,7 +113,7 @@ fun RunAnalysisCard(analysis: RunAnalysis) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Last 30 Days Summary", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
-            DataRow("Longest Run", String.format("%.2f km", analysis.longestRunLast30Days / 1000f))
+            DataRow("Safe longest Run", String.format("%.2f km", analysis.longestRunLast30Days / 1000f))
             DataRow("Acute Load (7d)", String.format("%.2f km", analysis.acuteLoad / 1000f))
             DataRow("Chronic Load (avg 3w)", String.format("%.2f km", analysis.chronicLoad / 1000f))
         }
