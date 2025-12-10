@@ -18,11 +18,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,11 +40,33 @@ import kth.nova.overloadalert.domain.model.RunAnalysis
 @Composable
 fun HomeScreen(viewModel: HomeViewModel) {
     val uiState by viewModel.uiState.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Show snackbar for sync errors
+    uiState.syncErrorMessage?.let {
+        LaunchedEffect(it) {
+            snackbarHostState.showSnackbar(message = it)
+            viewModel.onSyncErrorShown()
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Overload Alert") },
+                title = { 
+                    Column {
+                        Text("Overload Alert")
+                        uiState.lastSyncTime?.let {
+                            val minutesAgo = (System.currentTimeMillis() - it) / 60000
+                            Text(
+                                text = "Last synced: $minutesAgo min ago",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+                },
                 actions = {
                     IconButton(onClick = { viewModel.refreshData() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh Data")
@@ -56,16 +82,14 @@ fun HomeScreen(viewModel: HomeViewModel) {
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            when {
-                uiState.isLoading -> {
-                    CircularProgressIndicator()
-                }
-                uiState.errorMessage != null -> {
-                    Text(text = uiState.errorMessage!!)
-                }
-                uiState.runAnalysis != null -> {
-                    RunAnalysisCard(uiState.runAnalysis!!)
-                }
+            // Show a loading spinner only when there's no data to display
+            if (uiState.isLoading && uiState.runAnalysis == null) {
+                CircularProgressIndicator()
+            } else if (uiState.runAnalysis != null) {
+                RunAnalysisCard(uiState.runAnalysis!!)
+            } else {
+                 // Show a message if there is no analysis and we are not loading
+                Text("No data available. Please sync with Strava.")
             }
         }
     }
@@ -113,7 +137,7 @@ fun RunAnalysisCard(analysis: RunAnalysis) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Last 30 Days Summary", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
-            DataRow("Safe longest Run", String.format("%.2f km", analysis.longestRunLast30Days / 1000f))
+            DataRow("Safe Longest Run", String.format("%.2f km", analysis.longestRunLast30Days / 1000f))
             DataRow("Acute Load (7d)", String.format("%.2f km", analysis.acuteLoad / 1000f))
             DataRow("Chronic Load (avg 3w)", String.format("%.2f km", analysis.chronicLoad / 1000f))
         }

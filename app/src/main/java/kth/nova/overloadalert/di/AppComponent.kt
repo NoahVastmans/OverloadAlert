@@ -80,11 +80,11 @@ class AppComponent(context: Context) {
     }
 
     val homeViewModelFactory: ViewModelProvider.Factory by lazy {
-        HomeViewModel.provideFactory(runningRepository, analyzeRunData)
+        HomeViewModel.provideFactory(runningRepository, analyzeRunData, tokenManager)
     }
 
     val authViewModelFactory: ViewModelProvider.Factory by lazy {
-        AuthViewModel.provideFactory(authRepository)
+        AuthViewModel.provideFactory(authRepository, tokenManager)
     }
 
     val historyViewModelFactory: ViewModelProvider.Factory by lazy {

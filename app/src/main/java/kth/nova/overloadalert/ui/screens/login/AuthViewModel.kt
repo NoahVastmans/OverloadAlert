@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kth.nova.overloadalert.data.AuthRepository
+import kth.nova.overloadalert.data.TokenManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,13 +12,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class AuthViewModel(
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val tokenManager: TokenManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
 
-    private val _isAuthenticated = MutableStateFlow(authRepository.getIsAuthenticated())
+    private val _isAuthenticated = MutableStateFlow(tokenManager.getAccessToken() != null && tokenManager.getTokenExpiry() > System.currentTimeMillis() / 1000)
     val isAuthenticated: StateFlow<Boolean> = _isAuthenticated.asStateFlow()
 
     init {
@@ -30,7 +32,6 @@ class AuthViewModel(
                 authRepository.exchangeCodeForToken(code)
                 _isAuthenticated.value = true
             } catch (e: Exception) {
-                // In a production app, you might want to log this to a crash reporting service.
                 e.printStackTrace()
             }
         }
@@ -43,11 +44,12 @@ class AuthViewModel(
 
     companion object {
         fun provideFactory(
-            authRepository: AuthRepository
+            authRepository: AuthRepository,
+            tokenManager: TokenManager
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return AuthViewModel(authRepository) as T
+                return AuthViewModel(authRepository, tokenManager) as T
             }
         }
     }

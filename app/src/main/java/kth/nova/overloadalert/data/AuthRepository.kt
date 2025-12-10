@@ -16,7 +16,6 @@ class AuthRepository(
             code = code
         )
 
-        // Validate the response from Strava
         if (tokenResponse.accessToken == null || tokenResponse.refreshToken == null || tokenResponse.expiresAt == null) {
             throw Exception("Failed to get valid token from Strava. The authorization code may be invalid or expired.")
         }
@@ -26,15 +25,7 @@ class AuthRepository(
         tokenManager.saveTokenExpiry(tokenResponse.expiresAt)
     }
 
-    fun getIsAuthenticated(): Boolean {
-        // A real app would also check if the token is expired and use the refresh token.
-        val token = tokenManager.getAccessToken()
-        val expiry = tokenManager.getTokenExpiry()
-        return token != null && expiry > (System.currentTimeMillis() / 1000)
-    }
-
     fun getAuthUrl(): String {
-        // This redirect URI must have a host that matches the "Authorization Callback Domain" on Strava.
         val redirectUri = "overloadalert://localhost"
 
         return Uri.parse("https://www.strava.com/oauth/authorize")

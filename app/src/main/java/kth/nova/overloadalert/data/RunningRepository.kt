@@ -13,23 +13,22 @@ class RunningRepository(
 ) {
 
     /**
-     * Fetches runs for analysis with an optimized refresh strategy.
-     * If the local database is empty, it performs a full 60-day sync.
-     * For subsequent refreshes (forced or stale), it only fetches the last 5 days.
+     * Fetches the runs for the last 60 days directly from the local database.
      */
-    suspend fun getRunsForAnalysis(forceRefresh: Boolean = false): List<Run> {
+    suspend fun getRunsForAnalysis(): List<Run> {
         val sixtyDaysAgoDate = LocalDate.now().minusDays(60)
-        val sixtyDaysAgoString = sixtyDaysAgoDate.toString()
+        return runDao.getRunsSince(sixtyDaysAgoDate.toString())
+    }
 
-        val localRuns = runDao.getRunsSince(sixtyDaysAgoString)
-
-        val lastSync = tokenManager.getLastSyncTimestamp()
-        val isCacheStale = (System.currentTimeMillis() - lastSync) > 3600 * 1000 // 1 hour
-
-        val shouldSync = forceRefresh || localRuns.isEmpty() || isCacheStale
-
-        if (shouldSync) {
-            // Determine the date range for the sync
+    /**
+     * Syncs runs with the Strava API.
+     * If the local database is empty, it performs a full 60-day sync.
+     * For subsequent refreshes, it only fetches the last 5 days.
+     * Returns a Result indicating success or failure.
+     */
+    suspend fun syncRuns(): Result<Unit> {
+        return try {
+            val localRuns = getRunsForAnalysis()
             val daysToFetch = if (localRuns.isEmpty()) 60L else 5L
             val fetchSinceDate = LocalDate.now().minusDays(daysToFetch)
 
@@ -39,7 +38,7 @@ class RunningRepository(
             val remoteActivities = stravaApiService.getActivities(
                 before = nowEpoch,
                 after = fetchSinceEpoch,
-                perPage = 200 // Increase page size to accommodate more data
+                perPage = 200
             )
 
             val newRuns = remoteActivities
@@ -53,19 +52,16 @@ class RunningRepository(
                     )
                 }
 
-            // Insert or update the new runs into the database
             if (newRuns.isNotEmpty()) {
                 runDao.insertAll(newRuns)
             }
             
             tokenManager.saveLastSyncTimestamp(System.currentTimeMillis())
-            
-            // After syncing, return the fresh data for the last 60 days from the local DB
-            return runDao.getRunsSince(sixtyDaysAgoString)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Result.failure(e)
         }
-
-        // If no sync was needed, return the runs from the local cache
-        return localRuns
     }
 
     /**
