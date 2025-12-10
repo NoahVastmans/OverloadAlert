@@ -18,6 +18,7 @@ class AnalyzeRunData {
             return RunAnalysis(0f, 0f, 0f, null)
         }
 
+        // --- Partition data into time windows ---
         val today = LocalDate.now()
         val thirtyDaysAgo = today.minusDays(30)
         val sixtyDaysAgo = today.minusDays(60)
@@ -28,15 +29,45 @@ class AnalyzeRunData {
             runDate.isAfter(sixtyDaysAgo) && !runDate.isAfter(thirtyDaysAgo)
         }
 
-        val historicalLongestRun = getStableLongestRun(historicalRuns)
-        val longestRunCurrentPeriod = currentRuns.maxOfOrNull { it.distance } ?: 0f
+        // --- Calculate Baselines and Effective Longest Run ---
+        val historicalBaseline = getStableLongestRun(historicalRuns)
 
-        val effectiveLongestRun = if (longestRunCurrentPeriod > historicalLongestRun && historicalLongestRun > 0) {
-            (historicalLongestRun * 1.1f)
+        // --- Risk Assessment for the MOST RECENT run ---
+        val riskAssessment: RiskAssessment
+        val effectiveLongestInPreceding : Float
+
+        if (currentRuns.isEmpty()) {
+            riskAssessment = RiskAssessment(RiskLevel.NONE, "No runs in the current period to assess.")
+            effectiveLongestInPreceding = 0f
         } else {
-            longestRunCurrentPeriod
+            val mostRecentRun = currentRuns.first()
+            val precedingCurrentRuns = currentRuns.drop(1)
+
+            // Find the longest run in the period *before* the most recent run.
+            val longestInPreceding = precedingCurrentRuns.maxOfOrNull { it.distance } ?: 0f
+
+            // Apply capping logic to this preceding run to get its "effective" value for the baseline.
+            effectiveLongestInPreceding = if (longestInPreceding > historicalBaseline && historicalBaseline > 0) {
+                (historicalBaseline * 1.1f)
+            } else {
+                longestInPreceding
+            }
+
+            riskAssessment = calculateRisk(mostRecentRun.distance, effectiveLongestInPreceding)
         }
 
+        // --- Value for UI Display ---
+        // This should reflect the capped value of the *entire* current period for display on the home screen.
+        val currentRun = currentRuns.first()
+        val effectiveLongestRunForDisplay = if (currentRun.distance > effectiveLongestInPreceding * 1.1f && effectiveLongestInPreceding > 0) {
+            (effectiveLongestInPreceding * 1.1f)
+        } else if (currentRun.distance < effectiveLongestInPreceding * 1.1f && currentRun.distance > effectiveLongestInPreceding){
+            currentRun.distance
+        } else {
+            effectiveLongestInPreceding
+        }
+
+        // --- Standard Metrics Calculation (remains the same) ---
         val weeklyVolumes = (1..4).map { weekNumber ->
             val startOfWeek = today.minusDays((weekNumber * 7) - 1L)
             val endOfWeek = today.minusDays((weekNumber - 1) * 7L)
@@ -48,15 +79,7 @@ class AnalyzeRunData {
         val acuteLoad = if (weeklyVolumes.isNotEmpty()) weeklyVolumes[0] else 0f
         val chronicLoad = if (weeklyVolumes.size > 1) weeklyVolumes.subList(1, weeklyVolumes.size).average().toFloat() else 0f
 
-        val riskAssessment = if (currentRuns.isEmpty()) {
-            RiskAssessment(RiskLevel.NONE, "No runs in the current period to assess.")
-        } else {
-            val mostRecentRun = currentRuns.first()
-            val baseline = maxOf(historicalLongestRun, currentRuns.drop(1).maxOfOrNull { it.distance } ?: 0f)
-            calculateRisk(mostRecentRun.distance, baseline)
-        }
-
-        return RunAnalysis(effectiveLongestRun, acuteLoad, chronicLoad, riskAssessment)
+        return RunAnalysis(effectiveLongestRunForDisplay, acuteLoad, chronicLoad, riskAssessment)
     }
 
     fun analyzeFullHistory(allRuns: List<Run>): List<AnalyzedRun> {

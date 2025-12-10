@@ -72,7 +72,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.material.icons.extended) // Add extended icons
+    implementation(libs.androidx.compose.material.icons.extended)
 
     // Room
     implementation(libs.androidx.room.runtime)
@@ -91,6 +91,9 @@ dependencies {
 
     // Encrypted SharedPreferences
     implementation(libs.androidx.security.crypto)
+    
+    // WorkManager
+    implementation(libs.androidx.work.runtime.ktx)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -5,46 +5,26 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kth.nova.overloadalert.data.RunningRepository
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 
 class HistoryViewModel(
-    private val runningRepository: RunningRepository,
-    private val analyzeRunData: AnalyzeRunData
+    runningRepository: RunningRepository,
+    analyzeRunData: AnalyzeRunData
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(HistoryUiState())
-    val uiState: StateFlow<HistoryUiState> = _uiState.asStateFlow()
-
-    init {
-        loadAllRuns()
-    }
-
-    private fun loadAllRuns() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            try {
-                val allRuns = runningRepository.getAllRuns()
-                val analyzedRuns = analyzeRunData.analyzeFullHistory(allRuns)
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        analyzedRuns = analyzedRuns
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = "Failed to load run history."
-                    )
-                }
-            }
+    val uiState: StateFlow<HistoryUiState> = runningRepository.getAllRuns()
+        .map { allRuns ->
+            val analyzedRuns = analyzeRunData.analyzeFullHistory(allRuns)
+            HistoryUiState(isLoading = false, analyzedRuns = analyzedRuns)
         }
-    }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = HistoryUiState(isLoading = true)
+        )
 
     companion object {
         fun provideFactory(

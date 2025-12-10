@@ -23,7 +23,7 @@ class AppComponent(context: Context) {
     private val moshi = Moshi.Builder()
         .build()
 
-    private val tokenManager by lazy { TokenManager(context) }
+    val tokenManager by lazy { TokenManager(context) }
 
     private val authenticatedOkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -71,11 +71,11 @@ class AppComponent(context: Context) {
         AuthRepository(stravaAuthService, tokenManager)
     }
 
-    private val runningRepository: RunningRepository by lazy {
+    val runningRepository: RunningRepository by lazy {
         RunningRepository(appDatabase.runDao(), stravaApiService, tokenManager)
     }
 
-    private val analyzeRunData: AnalyzeRunData by lazy {
+    val analyzeRunData: AnalyzeRunData by lazy {
         AnalyzeRunData()
     }
 

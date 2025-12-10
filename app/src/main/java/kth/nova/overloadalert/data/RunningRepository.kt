@@ -3,7 +3,10 @@ package kth.nova.overloadalert.data
 import kth.nova.overloadalert.data.local.Run
 import kth.nova.overloadalert.data.local.RunDao
 import kth.nova.overloadalert.data.remote.StravaApiService
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import java.time.LocalDate
+import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
 class RunningRepository(
@@ -12,24 +15,15 @@ class RunningRepository(
     private val tokenManager: TokenManager
 ) {
 
-    /**
-     * Fetches the runs for the last 60 days directly from the local database.
-     */
-    suspend fun getRunsForAnalysis(): List<Run> {
+    fun getRunsForAnalysis(): Flow<List<Run>> {
         val sixtyDaysAgoDate = LocalDate.now().minusDays(60)
         return runDao.getRunsSince(sixtyDaysAgoDate.toString())
     }
 
-    /**
-     * Syncs runs with the Strava API.
-     * If the local database is empty, it performs a full 60-day sync.
-     * For subsequent refreshes, it only fetches the last 5 days.
-     * Returns a Result indicating success or failure.
-     */
     suspend fun syncRuns(): Result<Unit> {
         return try {
-            val localRuns = getRunsForAnalysis()
-            val daysToFetch = if (localRuns.isEmpty()) 60L else 5L
+            val localRunsSnapshot = getRunsForAnalysis().first()
+            val daysToFetch = if (localRunsSnapshot.isEmpty()) 60L else 5L
             val fetchSinceDate = LocalDate.now().minusDays(daysToFetch)
 
             val nowEpoch = LocalDate.now().plusDays(1).atStartOfDay().toEpochSecond(ZoneOffset.UTC)
@@ -40,6 +34,17 @@ class RunningRepository(
                 after = fetchSinceEpoch,
                 perPage = 200
             )
+
+            // --- New Deletion Logic ---
+            val remoteIds = remoteActivities.map { it.id }.toSet()
+            val localRunsToConsider = localRunsSnapshot.filter {
+                OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(fetchSinceDate)
+            }
+            val runsToDelete = localRunsToConsider.filter { it.id !in remoteIds }
+            if (runsToDelete.isNotEmpty()) {
+                runDao.deleteRuns(runsToDelete)
+            }
+            // --- End Deletion Logic ---
 
             val newRuns = remoteActivities
                 .filter { it.type == "Run" || it.type == "Walk" }
@@ -64,10 +69,7 @@ class RunningRepository(
         }
     }
 
-    /**
-     * Gets all runs stored in the local database.
-     */
-    suspend fun getAllRuns(): List<Run> {
+    fun getAllRuns(): Flow<List<Run>> {
         return runDao.getAllRuns()
     }
 }

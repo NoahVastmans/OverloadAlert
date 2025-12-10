@@ -42,7 +42,6 @@ fun HomeScreen(viewModel: HomeViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Show snackbar for sync errors
     uiState.syncErrorMessage?.let {
         LaunchedEffect(it) {
             snackbarHostState.showSnackbar(message = it)
@@ -82,13 +81,11 @@ fun HomeScreen(viewModel: HomeViewModel) {
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Show a loading spinner only when there's no data to display
             if (uiState.isLoading && uiState.runAnalysis == null) {
                 CircularProgressIndicator()
             } else if (uiState.runAnalysis != null) {
                 RunAnalysisCard(uiState.runAnalysis!!)
             } else {
-                 // Show a message if there is no analysis and we are not loading
                 Text("No data available. Please sync with Strava.")
             }
         }
