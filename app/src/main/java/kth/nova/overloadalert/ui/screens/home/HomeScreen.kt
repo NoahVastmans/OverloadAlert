@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -57,16 +58,22 @@ fun HomeScreen(viewModel: HomeViewModel) {
                     Column {
                         Text("Overload Alert")
                         uiState.lastSyncTime?.let {
-                            val minutesAgo = (System.currentTimeMillis() - it) / 60000
-                            Text(
-                                text = "Last synced: $minutesAgo min ago",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.Gray
-                            )
+                            if (it > 0) {
+                                val minutesAgo = (System.currentTimeMillis() - it) / 60000
+                                Text(
+                                    text = "Last synced: $minutesAgo min ago",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
                         }
                     }
                 },
                 actions = {
+                    // Debug button to clear the database
+                    IconButton(onClick = { viewModel.clearAllData() }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Clear Database")
+                    }
                     IconButton(onClick = { viewModel.refreshData() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh Data")
                     }
@@ -81,7 +88,7 @@ fun HomeScreen(viewModel: HomeViewModel) {
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (uiState.isLoading && uiState.runAnalysis == null) {
+            if (uiState.isLoading) {
                 CircularProgressIndicator()
             } else if (uiState.runAnalysis != null) {
                 RunAnalysisCard(uiState.runAnalysis!!)

@@ -7,11 +7,10 @@ import kth.nova.overloadalert.data.RunningRepository
 import kth.nova.overloadalert.data.TokenManager
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -21,20 +20,23 @@ class HomeViewModel(
     tokenManager: TokenManager
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(HomeUiState())
-    val uiState: StateFlow<HomeUiState> = runningRepository.getRunsForAnalysis()
-        .map {
-            val analysis = analyzeRunData(it)
-            HomeUiState(
-                isLoading = false,
-                runAnalysis = analysis,
-                lastSyncTime = tokenManager.getLastSyncTimestamp()
-            )
-        }.stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = HomeUiState(isLoading = true)
-        )
+    private val _uiState = MutableStateFlow(HomeUiState(isLoading = true))
+    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+    init {
+        runningRepository.getRunsForAnalysis()
+            .onEach { runs ->
+                val analysis = analyzeRunData(runs)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        runAnalysis = analysis,
+                        lastSyncTime = tokenManager.getLastSyncTimestamp()
+                    )
+                }
+            }
+            .launchIn(viewModelScope)
+    }
 
     fun refreshData() {
         viewModelScope.launch {
@@ -47,6 +49,12 @@ class HomeViewModel(
     
     fun onSyncErrorShown() {
         _uiState.update { it.copy(syncErrorMessage = null) }
+    }
+
+    fun clearAllData() {
+        viewModelScope.launch {
+            runningRepository.clearAllRuns()
+        }
     }
 
     companion object {

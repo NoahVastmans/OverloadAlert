@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import java.time.OffsetDateTime
 
 class HistoryViewModel(
     runningRepository: RunningRepository,
@@ -17,8 +18,23 @@ class HistoryViewModel(
 
     val uiState: StateFlow<HistoryUiState> = runningRepository.getAllRuns()
         .map { allRuns ->
+            if (allRuns.isEmpty()) {
+                return@map HistoryUiState(isLoading = false, analyzedRuns = emptyList())
+            }
+
+            // Analyze the full history to get risk assessments for every run.
             val analyzedRuns = analyzeRunData.analyzeFullHistory(allRuns)
-            HistoryUiState(isLoading = false, analyzedRuns = analyzedRuns)
+
+            // The oldest run determines the start of our valid analysis window.
+            val oldestRunDate = OffsetDateTime.parse(allRuns.last().startDateLocal).toLocalDate()
+            // We can only display runs that have a full 30-day history before them.
+            val displayStartDate = oldestRunDate.plusDays(30)
+
+            val runsForDisplay = analyzedRuns.filter {
+                OffsetDateTime.parse(it.run.startDateLocal).toLocalDate().isAfter(displayStartDate)
+            }
+
+            HistoryUiState(isLoading = false, analyzedRuns = runsForDisplay)
         }
         .stateIn(
             scope = viewModelScope,

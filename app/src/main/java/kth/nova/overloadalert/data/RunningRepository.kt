@@ -16,14 +16,14 @@ class RunningRepository(
 ) {
 
     fun getRunsForAnalysis(): Flow<List<Run>> {
-        val sixtyDaysAgoDate = LocalDate.now().minusDays(60)
-        return runDao.getRunsSince(sixtyDaysAgoDate.toString())
+        val ninetyDaysAgoDate = LocalDate.now().minusDays(90)
+        return runDao.getRunsSince(ninetyDaysAgoDate.toString())
     }
 
     suspend fun syncRuns(): Result<Unit> {
         return try {
             val localRunsSnapshot = getRunsForAnalysis().first()
-            val daysToFetch = if (localRunsSnapshot.isEmpty()) 60L else 5L
+            val daysToFetch = if (localRunsSnapshot.isEmpty()) 90L else 5L
             val fetchSinceDate = LocalDate.now().minusDays(daysToFetch)
 
             val nowEpoch = LocalDate.now().plusDays(1).atStartOfDay().toEpochSecond(ZoneOffset.UTC)
@@ -35,7 +35,6 @@ class RunningRepository(
                 perPage = 200
             )
 
-            // --- New Deletion Logic ---
             val remoteIds = remoteActivities.map { it.id }.toSet()
             val localRunsToConsider = localRunsSnapshot.filter {
                 OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(fetchSinceDate)
@@ -44,10 +43,9 @@ class RunningRepository(
             if (runsToDelete.isNotEmpty()) {
                 runDao.deleteRuns(runsToDelete)
             }
-            // --- End Deletion Logic ---
 
             val newRuns = remoteActivities
-                .filter { it.type == "Run" || it.type == "Walk" }
+                .filter { it.type == "Run" } //|| it.type == "Walk" }
                 .map {
                     Run(
                         id = it.id,
@@ -71,5 +69,9 @@ class RunningRepository(
 
     fun getAllRuns(): Flow<List<Run>> {
         return runDao.getAllRuns()
+    }
+
+    suspend fun clearAllRuns() {
+        runDao.clearAll()
     }
 }

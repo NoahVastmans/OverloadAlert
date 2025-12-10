@@ -1,5 +1,6 @@
 package kth.nova.overloadalert.domain.usecases
 
+import kotlinx.coroutines.currentCoroutineContext
 import kth.nova.overloadalert.data.local.Run
 import kth.nova.overloadalert.domain.model.AnalyzedRun
 import kth.nova.overloadalert.domain.model.RiskAssessment
@@ -11,6 +12,9 @@ import java.time.OffsetDateTime
 
 class AnalyzeRunData {
 
+    /**
+     * Analyzes the provided runs to produce a summary and risk assessment for the home screen.
+     */
     operator fun invoke(runs: List<Run>): RunAnalysis {
         val mergedRuns = mergeRuns(runs)
 
@@ -18,60 +22,35 @@ class AnalyzeRunData {
             return RunAnalysis(0f, 0f, 0f, null)
         }
 
-        // --- Partition data into time windows ---
-        val today = LocalDate.now()
-        val thirtyDaysAgo = today.minusDays(30)
-        val sixtyDaysAgo = today.minusDays(60)
+        val mostRecentRun = mergedRuns.first()
+        val allPrecedingRuns = mergedRuns.drop(1)
 
-        val currentRuns = mergedRuns.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(thirtyDaysAgo) }
-        val historicalRuns = mergedRuns.filter {
-            val runDate = OffsetDateTime.parse(it.startDateLocal).toLocalDate()
-            runDate.isAfter(sixtyDaysAgo) && !runDate.isAfter(thirtyDaysAgo)
+        // --- Risk Assessment Logic ---
+        val thirtyDaysBeforeMostRecent = OffsetDateTime.parse(mostRecentRun.startDateLocal).toLocalDate().minusDays(30)
+        val relevantPrecedingRuns = allPrecedingRuns.filter {
+            OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(thirtyDaysBeforeMostRecent)
         }
-
-        // --- Calculate Baselines and Effective Longest Run ---
-        val historicalBaseline = getStableLongestRun(historicalRuns)
-
-        // --- Risk Assessment for the MOST RECENT run ---
-        val riskAssessment: RiskAssessment
-        val effectiveLongestInPreceding : Float
-
-        if (currentRuns.isEmpty()) {
-            riskAssessment = RiskAssessment(RiskLevel.NONE, "No runs in the current period to assess.")
-            effectiveLongestInPreceding = 0f
-        } else {
-            val mostRecentRun = currentRuns.first()
-            val precedingCurrentRuns = currentRuns.drop(1)
-
-            // Find the longest run in the period *before* the most recent run.
-            val longestInPreceding = precedingCurrentRuns.maxOfOrNull { it.distance } ?: 0f
-
-            // Apply capping logic to this preceding run to get its "effective" value for the baseline.
-            effectiveLongestInPreceding = if (longestInPreceding > historicalBaseline && historicalBaseline > 0) {
-                (historicalBaseline * 1.1f)
-            } else {
-                longestInPreceding
-            }
-
-            riskAssessment = calculateRisk(mostRecentRun.distance, effectiveLongestInPreceding)
-        }
+        val stableBaseline = getStableLongestRun(relevantPrecedingRuns)
+        val riskAssessment = calculateRisk(mostRecentRun.distance, stableBaseline)
 
         // --- Value for UI Display ---
-        // This should reflect the capped value of the *entire* current period for display on the home screen.
-        val currentRun = currentRuns.first()
-        val effectiveLongestRunForDisplay = if (currentRun.distance > effectiveLongestInPreceding * 1.1f && effectiveLongestInPreceding > 0) {
-            (effectiveLongestInPreceding * 1.1f)
-        } else if (currentRun.distance < effectiveLongestInPreceding * 1.1f && currentRun.distance > effectiveLongestInPreceding){
-            currentRun.distance
+        val safeLongestRunForDisplay = if (mostRecentRun.distance > stableBaseline * 1.1f) {
+            stableBaseline * 1.1f
+        } else if (mostRecentRun.distance > stableBaseline && mostRecentRun.distance < stableBaseline * 1.1f) {
+            mostRecentRun.distance
         } else {
-            effectiveLongestInPreceding
+            stableBaseline
         }
 
-        // --- Standard Metrics Calculation (remains the same) ---
+        // --- Standard Metrics Calculation (based on today's date) ---
+        val today = LocalDate.now()
+        val thirtyDaysAgo = today.minusDays(30)
+        val currentRunsForMetrics = mergedRuns.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(thirtyDaysAgo) }
+        
         val weeklyVolumes = (1..4).map { weekNumber ->
             val startOfWeek = today.minusDays((weekNumber * 7) - 1L)
             val endOfWeek = today.minusDays((weekNumber - 1) * 7L)
-            currentRuns.filter { run ->
+            currentRunsForMetrics.filter { run ->
                 val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
                 !runDate.isBefore(startOfWeek) && !runDate.isAfter(endOfWeek)
             }.sumOf { it.distance.toDouble() }.toFloat()
@@ -79,24 +58,28 @@ class AnalyzeRunData {
         val acuteLoad = if (weeklyVolumes.isNotEmpty()) weeklyVolumes[0] else 0f
         val chronicLoad = if (weeklyVolumes.size > 1) weeklyVolumes.subList(1, weeklyVolumes.size).average().toFloat() else 0f
 
-        return RunAnalysis(effectiveLongestRunForDisplay, acuteLoad, chronicLoad, riskAssessment)
+        return RunAnalysis(safeLongestRunForDisplay, acuteLoad, chronicLoad, riskAssessment)
     }
 
+    /**
+     * Analyzes the full history of runs, providing a risk assessment for each one.
+     */
     fun analyzeFullHistory(allRuns: List<Run>): List<AnalyzedRun> {
         val mergedRuns = mergeRuns(allRuns)
         if (mergedRuns.isEmpty()) return emptyList()
 
         return mergedRuns.mapIndexed { index, run ->
-            val precedingRuns = mergedRuns.subList(index + 1, mergedRuns.size)
+            val allPrecedingRuns = mergedRuns.subList(index + 1, mergedRuns.size)
             val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
-            val thirtyDaysBeforeRun = runDate.minusDays(30)
+            val thirtyDaysBefore = runDate.minusDays(30)
 
-            val relevantPrecedingRuns = precedingRuns.filter {
-                OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(thirtyDaysBeforeRun)
+            val relevantPrecedingRuns = allPrecedingRuns.filter {
+                OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(thirtyDaysBefore)
             }
 
             val baseline = getStableLongestRun(relevantPrecedingRuns)
             val risk = calculateRisk(run.distance, baseline)
+            
             AnalyzedRun(run, risk)
         }
     }
@@ -133,23 +116,22 @@ class AnalyzeRunData {
         return mergedRuns.reversed()
     }
 
-    /**
-     * Calculates a stable longest run baseline using the 80th percentile.
-     * This is more robust against outliers than a simple max() or an aggressive IQR.
-     */
     private fun getStableLongestRun(runs: List<Run>): Float {
-        if (runs.isEmpty()) {
-            return 0f
+        if (runs.size < 4) {
+            return runs.maxOfOrNull { it.distance } ?: 0f
         }
 
         val distances = runs.map { it.distance }.sorted()
 
-        // Calculate the index for the 80th percentile
-        val index = (distances.size * 0.8).toInt()
+        val q1Index = (distances.size * 0.25).toInt()
+        val q3Index = (distances.size * 0.75).toInt()
+        val q1 = distances[q1Index]
+        val q3 = distances[q3Index]
+        val iqr = q3 - q1
 
-        // Make sure the index is within bounds
-        val percentileIndex = if (index < distances.size) index else distances.size - 1
+        val upperFence = q3 + 1.5f * iqr
 
-        return distances[percentileIndex]
+        val normalRuns = distances.filter { it <= upperFence }
+        return normalRuns.maxOrNull() ?: 0f
     }
 }
