@@ -23,7 +23,7 @@ class RunningRepository(
     suspend fun syncRuns(): Result<Unit> {
         return try {
             val localRunsSnapshot = getRunsForAnalysis().first()
-            val daysToFetch = if (localRunsSnapshot.isEmpty()) 90L else 5L
+            val daysToFetch = if (localRunsSnapshot.isEmpty()) 150L else 5L
             val fetchSinceDate = LocalDate.now().minusDays(daysToFetch)
 
             val nowEpoch = LocalDate.now().plusDays(1).atStartOfDay().toEpochSecond(ZoneOffset.UTC)

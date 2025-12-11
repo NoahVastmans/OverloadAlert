@@ -27,7 +27,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,12 +38,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kth.nova.overloadalert.domain.model.RiskLevel
 import kth.nova.overloadalert.domain.model.RunAnalysis
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(viewModel: HomeViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60000L) // Update every minute
+            currentTime = System.currentTimeMillis()
+        }
+    }
 
     uiState.syncErrorMessage?.let {
         LaunchedEffect(it) {
@@ -59,9 +71,14 @@ fun HomeScreen(viewModel: HomeViewModel) {
                         Text("Overload Alert")
                         uiState.lastSyncTime?.let {
                             if (it > 0) {
-                                val minutesAgo = (System.currentTimeMillis() - it) / 60000
+                                val minutesAgo = (currentTime - it) / 60000
+                                val syncText = when {
+                                    minutesAgo < 1 -> "Last synced: just now"
+                                    minutesAgo == 1L -> "Last synced: 1 min ago"
+                                    else -> "Last synced: $minutesAgo min ago"
+                                }
                                 Text(
-                                    text = "Last synced: $minutesAgo min ago",
+                                    text = syncText,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color.Gray
                                 )
@@ -70,7 +87,6 @@ fun HomeScreen(viewModel: HomeViewModel) {
                     }
                 },
                 actions = {
-                    // Debug button to clear the database
                     IconButton(onClick = { viewModel.clearAllData() }) {
                         Icon(Icons.Default.Delete, contentDescription = "Clear Database")
                     }
