@@ -19,7 +19,8 @@ class AuthViewModel(
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
 
-    private val _isAuthenticated = MutableStateFlow(tokenManager.getAccessToken() != null && tokenManager.getTokenExpiry() > System.currentTimeMillis() / 1000)
+    // The user is authenticated if a refresh token exists.
+    private val _isAuthenticated = MutableStateFlow(tokenManager.getRefreshToken() != null)
     val isAuthenticated: StateFlow<Boolean> = _isAuthenticated.asStateFlow()
 
     init {

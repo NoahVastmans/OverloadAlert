@@ -10,6 +10,7 @@ import kth.nova.overloadalert.data.TokenManager
 import kth.nova.overloadalert.data.local.AppDatabase
 import kth.nova.overloadalert.data.remote.StravaApiService
 import kth.nova.overloadalert.data.remote.StravaAuthService
+import kth.nova.overloadalert.data.remote.TokenAuthenticator
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
 import kth.nova.overloadalert.ui.screens.history.HistoryViewModel
 import kth.nova.overloadalert.ui.screens.home.HomeViewModel
@@ -20,13 +21,24 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 
 class AppComponent(context: Context) {
 
-    private val moshi = Moshi.Builder()
-        .build()
+    private val moshi = Moshi.Builder().build()
 
     val tokenManager by lazy { TokenManager(context) }
 
+    private val unauthenticatedRetrofit = Retrofit.Builder()
+        .baseUrl("https://www.strava.com/api/v3/")
+        .addConverterFactory(MoshiConverterFactory.create(moshi))
+        .build()
+
+    val stravaAuthService: StravaAuthService by lazy {
+        unauthenticatedRetrofit.create(StravaAuthService::class.java)
+    }
+
+    private val authenticator by lazy { TokenAuthenticator(tokenManager, stravaAuthService) }
+
     private val authenticatedOkHttpClient by lazy {
         OkHttpClient.Builder()
+            .authenticator(authenticator)
             .addInterceptor { chain ->
                 val token = tokenManager.getAccessToken()
                 val request = if (token != null) {
@@ -47,17 +59,8 @@ class AppComponent(context: Context) {
         .addConverterFactory(MoshiConverterFactory.create(moshi))
         .build()
 
-    private val unauthenticatedRetrofit = Retrofit.Builder()
-        .baseUrl("https://www.strava.com/api/v3/")
-        .addConverterFactory(MoshiConverterFactory.create(moshi))
-        .build()
-
     private val stravaApiService: StravaApiService by lazy {
         authenticatedRetrofit.create(StravaApiService::class.java)
-    }
-
-    private val stravaAuthService: StravaAuthService by lazy {
-        unauthenticatedRetrofit.create(StravaAuthService::class.java)
     }
 
     private val appDatabase: AppDatabase by lazy {

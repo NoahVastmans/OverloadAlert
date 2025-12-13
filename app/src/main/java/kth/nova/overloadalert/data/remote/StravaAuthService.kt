@@ -14,4 +14,13 @@ interface StravaAuthService {
         @Field("code") code: String,
         @Field("grant_type") grantType: String = "authorization_code"
     ): StravaTokenResponse
+
+    @FormUrlEncoded
+    @POST("oauth/token")
+    fun refreshToken(
+        @Field("client_id") clientId: String,
+        @Field("client_secret") clientSecret: String,
+        @Field("refresh_token") refreshToken: String,
+        @Field("grant_type") grantType: String = "refresh_token"
+    ): retrofit2.Call<StravaTokenResponse>
 }
