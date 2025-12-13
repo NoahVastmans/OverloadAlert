@@ -155,11 +155,10 @@ fun RunAnalysisCard(analysis: RunAnalysis) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Last 30 Days Summary", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Recommendations", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
-            DataRow("Safe Longest Run", String.format("%.2f km", analysis.longestRunLast30Days / 1000f))
-            DataRow("Acute Load (7d)", String.format("%.2f km", analysis.acuteLoad / 1000f))
-            DataRow("Chronic Load (avg 3w)", String.format("%.2f km", analysis.chronicLoad / 1000f))
+            DataRow("Maximal Run Today", String.format("%.2f km", analysis.recommendedTodaysRun / 1000f))
+            DataRow("Maximal Volume This Week", String.format("%.2f km", analysis.maxWeeklyLoad / 1000f))
         }
     }
 }
