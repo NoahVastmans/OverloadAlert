@@ -36,7 +36,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kth.nova.overloadalert.domain.model.RiskLevel
 import kth.nova.overloadalert.domain.model.RunAnalysis
 import kotlinx.coroutines.delay
 
@@ -117,40 +116,31 @@ fun HomeScreen(viewModel: HomeViewModel) {
 
 @Composable
 fun RunAnalysisCard(analysis: RunAnalysis) {
-    // Risk Assessment Card
-    analysis.riskAssessment?.let { assessment ->
-        val cardColor = when (assessment.riskLevel) {
-            RiskLevel.NONE -> Color(0xFFC8E6C9) // Light Green
-            RiskLevel.MODERATE -> Color(0xFFFFF9C4) // Light Yellow
-            RiskLevel.HIGH -> Color(0xFFFFE0B2) // Light Orange
-            RiskLevel.VERY_HIGH -> Color(0xFFFFCDD2) // Light Red
-        }
-        val textColor = when (assessment.riskLevel) {
-            RiskLevel.NONE -> Color(0xFF2E7D32)
-            RiskLevel.MODERATE -> Color(0xFFF9A825)
-            RiskLevel.HIGH -> Color(0xFFEF6C00)
-            RiskLevel.VERY_HIGH -> Color(0xFFC62828)
-        }
+    val combinedRisk = analysis.combinedRisk
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = cardColor)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = assessment.riskLevel.name.replace("_", " "),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(text = assessment.message, style = MaterialTheme.typography.bodyMedium, color = textColor)
-            }
+    // Main Combined Risk Card
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = combinedRisk.color.copy(alpha = 0.1f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = combinedRisk.title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = combinedRisk.color
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = combinedRisk.message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = combinedRisk.color.copy(alpha = 0.8f)
+            )
         }
-        Spacer(Modifier.height(24.dp))
     }
+    Spacer(Modifier.height(24.dp))
 
-    // Data Details Card
+    // Prescriptive Metrics Card
     Card(
         modifier = Modifier.fillMaxWidth()
     ) {

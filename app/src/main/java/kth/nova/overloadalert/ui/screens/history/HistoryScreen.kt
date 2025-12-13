@@ -1,7 +1,6 @@
 package kth.nova.overloadalert.ui.screens.history
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -73,7 +72,7 @@ fun HistoryScreen(viewModel: HistoryViewModel) {
 @Composable
 fun RunHistoryItem(analyzedRun: AnalyzedRun) {
     val run = analyzedRun.run
-    val riskLevel = analyzedRun.riskAssessment.riskLevel
+    val riskLevel = analyzedRun.singleRunRiskAssessment.riskLevel
 
     val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy")
     val runDate = OffsetDateTime.parse(run.startDateLocal).format(dateFormatter)

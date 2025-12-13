@@ -7,5 +7,5 @@ import kth.nova.overloadalert.data.local.Run
  */
 data class AnalyzedRun(
     val run: Run,
-    val riskAssessment: RiskAssessment
+    val singleRunRiskAssessment: SingleRunRiskAssessment
 )

@@ -1,11 +1,12 @@
 package kth.nova.overloadalert.domain.usecases
 
-import kotlinx.coroutines.currentCoroutineContext
+import androidx.compose.ui.graphics.Color
 import kth.nova.overloadalert.data.local.Run
 import kth.nova.overloadalert.domain.model.AcwrAssessment
 import kth.nova.overloadalert.domain.model.AcwrRiskLevel
 import kth.nova.overloadalert.domain.model.AnalyzedRun
-import kth.nova.overloadalert.domain.model.RiskAssessment
+import kth.nova.overloadalert.domain.model.CombinedRisk
+import kth.nova.overloadalert.domain.model.SingleRunRiskAssessment
 import kth.nova.overloadalert.domain.model.RiskLevel
 import kth.nova.overloadalert.domain.model.RunAnalysis
 import java.time.Duration
@@ -17,22 +18,16 @@ import kotlin.math.min
 
 class AnalyzeRunData {
 
-    /**
-     * Analyzes the provided runs to produce a summary and risk assessment for the home screen.
-     */
-    operator fun invoke(runs: List<Run>): RunAnalysis {
+    operator fun invoke(runs: List<Run>): RunAnalysis? {
         val mergedRuns = mergeRuns(runs)
 
-        if (mergedRuns.isEmpty()) {
-            return RunAnalysis(0f, 0f, 0f, null, null, 0f, 0f)
-        }
+        if (mergedRuns.isEmpty()) return null
 
-        // --- New EWMA-based Acute and Chronic Load Calculation ---
         val today = LocalDate.now()
-        val startDate = if (mergedRuns.isNotEmpty()) mergedRuns.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() } else today
+        val startDate = mergedRuns.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
         
         val dailyLoads = createDailyLoadSeries(mergedRuns, startDate, today)
-        val capValue = getIqrCapValue(dailyLoads)*1.1f
+        val capValue = getIqrCapValue(dailyLoads) * 1.1f
         val cappedDailyLoads = dailyLoads.map { it.coerceAtMost(capValue) }
 
         val acuteLoadSeries = calculateRollingSum(dailyLoads, 7)
@@ -40,23 +35,17 @@ class AnalyzeRunData {
 
         val cappedAcuteLoadSeries = calculateRollingSum(cappedDailyLoads, 7)
         val chronicLoad = calculateEwma(cappedAcuteLoadSeries, 28).lastOrNull() ?: 0f
-        // -------------------------------------------------------------
 
-        // --- New ACWR Calculation ---
         val acwrAssessment = if (chronicLoad > 0) {
             val ratio = acuteLoad / chronicLoad
             when {
-                ratio > 2.0f -> AcwrAssessment(AcwrRiskLevel.HIGH_OVERTRAINING, ratio, "High risk of overtraining.")
-                ratio > 1.3f -> AcwrAssessment(AcwrRiskLevel.MODERATE_OVERTRAINING, ratio, "Moderate risk of overtraining.")
-                ratio > 0.8f -> AcwrAssessment(AcwrRiskLevel.OPTIMAL, ratio, "Optimal training load.")
-                else -> AcwrAssessment(AcwrRiskLevel.UNDERTRAINING, ratio, "Risk of undertraining.")
+                ratio > 2.0f -> AcwrAssessment(AcwrRiskLevel.HIGH_OVERTRAINING, ratio, "")
+                ratio > 1.3f -> AcwrAssessment(AcwrRiskLevel.MODERATE_OVERTRAINING, ratio, "")
+                ratio > 0.8f -> AcwrAssessment(AcwrRiskLevel.OPTIMAL, ratio, "")
+                else -> AcwrAssessment(AcwrRiskLevel.UNDERTRAINING, ratio, "")
             }
-        } else {
-            null
-        }
-        // --------------------------------
+        } else null
 
-        // --- Existing Risk Assessment Logic ---
         val mostRecentRun = mergedRuns.first()
         val allPrecedingRuns = mergedRuns.drop(1)
 
@@ -65,7 +54,7 @@ class AnalyzeRunData {
             OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(thirtyDaysBeforeMostRecent)
         }
         val stableBaseline = getStableLongestRun(relevantPrecedingRuns)
-        val riskAssessment = calculateRisk(mostRecentRun.distance, stableBaseline)
+        val singleRunRiskAssessment = calculateRisk(mostRecentRun.distance, stableBaseline)
 
         val safeLongestRunForDisplay = if (mostRecentRun.distance > stableBaseline * 1.1f && stableBaseline > 0) {
             stableBaseline * 1.1f
@@ -75,14 +64,57 @@ class AnalyzeRunData {
             stableBaseline
         }
         
-        // --- New Prescriptive Metrics ---
         val recommendedTodaysRun = max(0f, min(safeLongestRunForDisplay * 1.1f, chronicLoad * 1.3f - acuteLoad))
         val todaysLoad = dailyLoads.lastOrNull() ?: 0f
         val maxWeeklyLoad = max(0f, chronicLoad * 1.3f - todaysLoad)
 
-        return RunAnalysis(safeLongestRunForDisplay, acuteLoad, chronicLoad, riskAssessment, acwrAssessment, recommendedTodaysRun, maxWeeklyLoad)
+        val combinedRisk = generateCombinedRisk(singleRunRiskAssessment, acwrAssessment)
+
+        return RunAnalysis(acuteLoad, chronicLoad, recommendedTodaysRun, maxWeeklyLoad, combinedRisk)
     }
 
+    private fun generateCombinedRisk(runRisk: SingleRunRiskAssessment, acwr: AcwrAssessment?): CombinedRisk {
+        val runRiskLevel = runRisk.riskLevel
+        val acwrRiskLevel = acwr?.riskLevel ?: AcwrRiskLevel.OPTIMAL
+
+        // Dummy messages for you to replace
+        when (acwrRiskLevel) {
+            AcwrRiskLevel.UNDERTRAINING -> {
+                when (runRiskLevel) {
+                    RiskLevel.NONE -> return CombinedRisk("De-training", "Dummy Message: Undertraining and no single run risk.", Color.Blue)
+                    RiskLevel.MODERATE -> return CombinedRisk("Risky Spike", "Dummy Message: Undertraining with a moderate single run.", Color.Yellow)
+                    RiskLevel.HIGH -> return CombinedRisk("High Risk Spike", "Dummy Message: Undertraining with a high-risk single run.", Color.Red)
+                    RiskLevel.VERY_HIGH -> return CombinedRisk("Very High Risk Spike", "Dummy Message: Undertraining with a very high-risk single run.", Color.Red)
+                }
+            }
+            AcwrRiskLevel.OPTIMAL -> {
+                when (runRiskLevel) {
+                    RiskLevel.NONE -> return CombinedRisk("Optimal", "Dummy Message: Optimal load and no single run risk.", Color.Green)
+                    RiskLevel.MODERATE -> return CombinedRisk("Caution", "Dummy Message: Optimal load but a moderate single run.", Color.Yellow)
+                    RiskLevel.HIGH -> return CombinedRisk("Warning", "Dummy Message: Optimal load but a high-risk single run.", Color.Red)
+                    RiskLevel.VERY_HIGH -> return CombinedRisk("Danger", "Dummy Message: Optimal load but a very high-risk single run.", Color.Red)
+                }
+            }
+            AcwrRiskLevel.MODERATE_OVERTRAINING -> {
+                when (runRiskLevel) {
+                    RiskLevel.NONE -> return CombinedRisk("Overreaching", "Dummy Message: Moderate overtraining risk.", Color.Yellow)
+                    RiskLevel.MODERATE -> return CombinedRisk("High Risk", "Dummy Message: Moderate overtraining and a moderate single run.", Color.Red)
+                    RiskLevel.HIGH -> return CombinedRisk("Very High Risk", "Dummy Message: Moderate overtraining and a high-risk single run.", Color.Red)
+                    RiskLevel.VERY_HIGH -> return CombinedRisk("Extreme Risk", "Dummy Message: Moderate overtraining and a very high-risk single run.", Color.Red)
+                }
+            }
+            AcwrRiskLevel.HIGH_OVERTRAINING -> {
+                when (runRiskLevel) {
+                    RiskLevel.NONE -> return CombinedRisk("High Overtraining Risk", "Dummy Message: High overtraining risk.", Color.Red)
+                    RiskLevel.MODERATE -> return CombinedRisk("Very High Risk", "Dummy Message: High overtraining and a moderate single run.", Color.Red)
+                    RiskLevel.HIGH -> return CombinedRisk("Extreme Risk", "Dummy Message: High overtraining and a high-risk single run.", Color.Red)
+                    RiskLevel.VERY_HIGH -> return CombinedRisk("Danger Zone", "Dummy Message: High overtraining and a very high-risk single run.", Color.Red)
+                }
+            }
+        }
+    }
+
+    // ... other functions remain the same ...
     private fun createDailyLoadSeries(runs: List<Run>, startDate: LocalDate, endDate: LocalDate): List<Float> {
         val dailyLoadMap = runs.groupBy { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
             .mapValues { (_, runsOnDay) -> runsOnDay.sumOf { it.distance.toDouble() }.toFloat() }
@@ -149,16 +181,16 @@ class AnalyzeRunData {
         }
     }
 
-    private fun calculateRisk(distance: Float, baseline: Float): RiskAssessment {
+    private fun calculateRisk(distance: Float, baseline: Float): SingleRunRiskAssessment {
         if (baseline <= 0f) {
-            return RiskAssessment(RiskLevel.NONE, "No baseline to compare against.")
+            return SingleRunRiskAssessment(RiskLevel.NONE, "No baseline to compare against.")
         }
         val increasePercentage = (distance - baseline) / baseline
         return when {
-            increasePercentage > 1.0 -> RiskAssessment(RiskLevel.VERY_HIGH, "This run was more than double your recent longest run.")
-            increasePercentage > 0.3 -> RiskAssessment(RiskLevel.HIGH, "This run was over 30% longer than your recent longest run.")
-            increasePercentage > 0.1 -> RiskAssessment(RiskLevel.MODERATE, "This run was over 10% longer than your recent longest run.")
-            else -> RiskAssessment(RiskLevel.NONE, "This run was within a safe range of your recent longest run.")
+            increasePercentage > 1.0 -> SingleRunRiskAssessment(RiskLevel.VERY_HIGH, "This run was more than double your recent longest run.")
+            increasePercentage > 0.3 -> SingleRunRiskAssessment(RiskLevel.HIGH, "This run was over 30% longer than your recent longest run.")
+            increasePercentage > 0.1 -> SingleRunRiskAssessment(RiskLevel.MODERATE, "This run was over 10% longer than your recent longest run.")
+            else -> SingleRunRiskAssessment(RiskLevel.NONE, "This run was within a safe range of your recent longest run.")
         }
     }
 

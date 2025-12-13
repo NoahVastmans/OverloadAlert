@@ -40,15 +40,15 @@ class SyncWorker(
                     // 6. Find the highest risk among the NEW runs
                     val highestRiskNewRun = allAnalyzedRuns
                         .filter { analyzedRun -> analyzedRun.run.id in newRuns.map { it.id } }
-                        .maxByOrNull { it.riskAssessment.riskLevel.ordinal }
+                        .maxByOrNull { it.singleRunRiskAssessment.riskLevel.ordinal }
 
                     highestRiskNewRun?.let {
-                        val risk = it.riskAssessment.riskLevel
+                        val risk = it.singleRunRiskAssessment.riskLevel
                         // 7. Send a notification if any new run is high or very high risk
                         if (risk == RiskLevel.HIGH || risk == RiskLevel.VERY_HIGH) {
                             notificationHelper.createNotificationChannel()
                             notificationHelper.showHighRiskNotification(
-                                it.riskAssessment.message
+                                it.singleRunRiskAssessment.message
                             )
                         }
                     }

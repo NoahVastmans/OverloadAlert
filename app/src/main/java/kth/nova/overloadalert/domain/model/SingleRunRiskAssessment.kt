@@ -13,7 +13,7 @@ enum class RiskLevel {
 /**
  * Holds the result of a risk assessment, including the level and a descriptive message.
  */
-data class RiskAssessment(
+data class SingleRunRiskAssessment(
     val riskLevel: RiskLevel,
     val message: String
 )
