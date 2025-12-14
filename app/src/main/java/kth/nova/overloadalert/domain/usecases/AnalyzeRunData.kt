@@ -64,7 +64,7 @@ class AnalyzeRunData {
             stableBaseline
         }
         
-        val recommendedTodaysRun = max(0f, min(safeLongestRunForDisplay * 1.1f - acuteLoad, chronicLoad * 1.3f - acuteLoad))
+        val recommendedTodaysRun = max(0f, min(safeLongestRunForDisplay * 1.1f - (acuteLoadSeries.lastOrNull() ?: 0f), chronicLoad * 1.3f - acuteLoad))
         val todaysLoad = dailyLoads.lastOrNull() ?: 0f
         val maxWeeklyLoad = max(0f, chronicLoad * 1.3f - todaysLoad)
 
@@ -81,7 +81,7 @@ class AnalyzeRunData {
         when (acwrRiskLevel) {
             AcwrRiskLevel.UNDERTRAINING -> {
                 when (runRiskLevel) {
-                    RiskLevel.NONE -> return CombinedRisk("De-training", "Dummy Message: Undertraining and no single run risk.", Color.Blue)
+                    RiskLevel.NONE -> return CombinedRisk("De-training/Recovery", "Dummy Message: Undertraining and no single run risk.", Color.Blue)
                     RiskLevel.MODERATE -> return CombinedRisk("Risky Spike", "Dummy Message: Undertraining with a moderate single run.", Color.Yellow)
                     RiskLevel.HIGH -> return CombinedRisk("High Risk Spike", "Dummy Message: Undertraining with a high-risk single run.", Color.Red)
                     RiskLevel.VERY_HIGH -> return CombinedRisk("Very High Risk Spike", "Dummy Message: Undertraining with a very high-risk single run.", Color.Red)
@@ -114,7 +114,7 @@ class AnalyzeRunData {
         }
     }
 
-    private fun createDailyLoadSeries(runs: List<Run>, startDate: LocalDate, endDate: LocalDate): List<Float> {
+    internal fun createDailyLoadSeries(runs: List<Run>, startDate: LocalDate, endDate: LocalDate): List<Float> {
         val dailyLoadMap = runs.groupBy { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
             .mapValues { (_, runsOnDay) -> runsOnDay.sumOf { it.distance.toDouble() }.toFloat() }
 
@@ -124,7 +124,7 @@ class AnalyzeRunData {
         }
     }
 
-    private fun getIqrCapValue(loads: List<Float>): Float {
+    internal fun getIqrCapValue(loads: List<Float>): Float {
         if (loads.size < 4) return loads.maxOrNull() ?: Float.MAX_VALUE
         val sortedLoads = loads.filter { it > 0 }.sorted()
         if (sortedLoads.isEmpty()) return Float.MAX_VALUE
@@ -137,7 +137,7 @@ class AnalyzeRunData {
         return q3 + 1.5f * iqr
     }
 
-    private fun calculateRollingSum(data: List<Float>, window: Int): List<Float> {
+    internal fun calculateRollingSum(data: List<Float>, window: Int): List<Float> {
         val result = mutableListOf<Float>()
         for (i in data.indices) {
             val start = max(0, i - window + 1)

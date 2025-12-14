@@ -13,47 +13,43 @@ class GenerateGraphData(private val analyzeRunData: AnalyzeRunData) {
         if (runs.isEmpty()) return GraphData()
 
         val today = LocalDate.now()
-        // We need 7 extra days for EWMA warm-up, so we start from 37 days ago.
-        val calculationStartDate = today.minusDays(37)
+        // We need a longer history to calculate the initial chronic load correctly (28 days + warm-up).
+        val calculationStartDate = today.minusDays(60)
 
-        val rawDailyLoads = mutableListOf<Float>()
-        val rawThresholds = mutableListOf<Float>()
-        val dateLabels = mutableListOf<String>()
+        // Use the shared helper function to get a full series of daily loads.
+        val dailyLoads = analyzeRunData.createDailyLoadSeries(runs, calculationStartDate, today)
 
-        // First, calculate the raw, unsmoothed data for the last 37 days
-        for (i in 0..36) {
-            val date = calculationStartDate.plusDays(i.toLong() + 1)
-            val runsOnThisDay = runs.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate() == date }
-            rawDailyLoads.add(runsOnThisDay.sumOf { it.distance.toDouble() }.toFloat())
+        // --- Generate Data for Chart 2 (ACWR) ---
+        val capValue = analyzeRunData.getIqrCapValue(dailyLoads)
+        val cappedDailyLoads = dailyLoads.map { it.coerceAtMost(capValue) }
 
-            val runsBeforeThisDay = runs.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate().isBefore(date) }
-            val thirtyDaysBeforeThisDay = date.minusDays(30)
-            val relevantPrecedingRuns = runsBeforeThisDay.filter {
-                OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(thirtyDaysBeforeThisDay)
+        val acuteLoadSeries = analyzeRunData.calculateRollingSum(dailyLoads, 7)
+        val cappedAcuteLoadSeries = analyzeRunData.calculateRollingSum(cappedDailyLoads, 7)
+        val chronicLoadSeries = analyzeRunData.calculateEwma(cappedAcuteLoadSeries, 28)
+
+        // --- Generate Data for Chart 1 (Longest Run) ---
+        val longestRunThresholds = (0..60).map { i ->
+            val date = calculationStartDate.plusDays(i.toLong())
+            val thirtyDaysBefore = date.minusDays(30)
+            val precedingRuns = runs.filter { run ->
+                val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
+                runDate.isAfter(thirtyDaysBefore) && !runDate.isAfter(date)
             }
-            
-            val stableBaseline = analyzeRunData.getStableLongestRun(relevantPrecedingRuns)
-            rawThresholds.add(stableBaseline * 1.1f)
-
-            // Also generate the date label for this day
-            dateLabels.add(date.dayOfMonth.toString())
+            analyzeRunData.getStableLongestRun(precedingRuns) * 1.1f
         }
+        val smoothedLongestRunThresholds = analyzeRunData.calculateEwma(longestRunThresholds, 7)
+        
+        // --- Prepare final 30-day data for the UI ---
+        val finalDateLabels = (0..29).map { today.minusDays(29L - it).dayOfMonth.toString() }
 
-        // Now, smooth the raw threshold data using EWMA over the full 37-day period
-        val smoothedThresholds = analyzeRunData.calculateEwma(rawThresholds, 7) // 7-day smoothing span
+        // Chart 1 data
+        val dailyLoadBars = dailyLoads.takeLast(30).mapIndexed { index, value -> BarEntry(index.toFloat(), value) }
+        val longestRunThresholdLine = smoothedLongestRunThresholds.takeLast(30).mapIndexed { index, value -> Entry(index.toFloat(), value) }
+        
+        // Chart 2 data
+        val acuteLoadLine = acuteLoadSeries.takeLast(30).mapIndexed { index, value -> Entry(index.toFloat(), value) }
+        val chronicLoadLine = chronicLoadSeries.takeLast(30).mapIndexed { index, value -> Entry(index.toFloat(), value) }
 
-        // Take only the last 30 days for the UI
-        val finalDailyLoads = rawDailyLoads.takeLast(30)
-        val finalSmoothedThresholds = smoothedThresholds.takeLast(30)
-        val finalDateLabels = dateLabels.takeLast(30)
-
-        val dailyLoadBars = finalDailyLoads.mapIndexed { index, value ->
-            BarEntry(index.toFloat(), value)
-        }
-        val longestRunThresholdLine = finalSmoothedThresholds.mapIndexed { index, value ->
-            Entry(index.toFloat(), value)
-        }
-
-        return GraphData(dailyLoadBars, longestRunThresholdLine, finalDateLabels)
+        return GraphData(dailyLoadBars, longestRunThresholdLine, finalDateLabels, acuteLoadLine, chronicLoadLine)
     }
 }
