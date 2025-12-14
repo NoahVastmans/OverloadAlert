@@ -6,7 +6,6 @@ import kth.nova.overloadalert.data.local.Run
 import kth.nova.overloadalert.domain.model.GraphData
 import java.time.LocalDate
 import java.time.OffsetDateTime
-import java.time.temporal.ChronoUnit
 
 class GenerateGraphData(private val analyzeRunData: AnalyzeRunData) {
 
@@ -14,17 +13,18 @@ class GenerateGraphData(private val analyzeRunData: AnalyzeRunData) {
         if (runs.isEmpty()) return GraphData()
 
         val today = LocalDate.now()
-        val thirtyDaysAgo = today.minusDays(30)
-        val relevantRuns = runs.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(thirtyDaysAgo) }
+        // We need 7 extra days for EWMA warm-up, so we start from 37 days ago.
+        val calculationStartDate = today.minusDays(37)
 
-        val dailyLoadBars = mutableListOf<BarEntry>()
-        val longestRunThresholdLine = mutableListOf<Entry>()
+        val rawDailyLoads = mutableListOf<Float>()
+        val rawThresholds = mutableListOf<Float>()
+        val dateLabels = mutableListOf<String>()
 
-        for (i in 0..29) {
-            val date = thirtyDaysAgo.plusDays(i.toLong() + 1)
-            val runsOnThisDay = relevantRuns.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate() == date }
-            val dailyLoad = runsOnThisDay.sumOf { it.distance.toDouble() }.toFloat()
-            dailyLoadBars.add(BarEntry(i.toFloat(), dailyLoad))
+        // First, calculate the raw, unsmoothed data for the last 37 days
+        for (i in 0..36) {
+            val date = calculationStartDate.plusDays(i.toLong() + 1)
+            val runsOnThisDay = runs.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate() == date }
+            rawDailyLoads.add(runsOnThisDay.sumOf { it.distance.toDouble() }.toFloat())
 
             val runsBeforeThisDay = runs.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate().isBefore(date) }
             val thirtyDaysBeforeThisDay = date.minusDays(30)
@@ -33,10 +33,27 @@ class GenerateGraphData(private val analyzeRunData: AnalyzeRunData) {
             }
             
             val stableBaseline = analyzeRunData.getStableLongestRun(relevantPrecedingRuns)
-            val threshold = stableBaseline * 1.1f
-            longestRunThresholdLine.add(Entry(i.toFloat(), threshold))
+            rawThresholds.add(stableBaseline * 1.1f)
+
+            // Also generate the date label for this day
+            dateLabels.add(date.dayOfMonth.toString())
         }
 
-        return GraphData(dailyLoadBars, longestRunThresholdLine)
+        // Now, smooth the raw threshold data using EWMA over the full 37-day period
+        val smoothedThresholds = analyzeRunData.calculateEwma(rawThresholds, 7) // 7-day smoothing span
+
+        // Take only the last 30 days for the UI
+        val finalDailyLoads = rawDailyLoads.takeLast(30)
+        val finalSmoothedThresholds = smoothedThresholds.takeLast(30)
+        val finalDateLabels = dateLabels.takeLast(30)
+
+        val dailyLoadBars = finalDailyLoads.mapIndexed { index, value ->
+            BarEntry(index.toFloat(), value)
+        }
+        val longestRunThresholdLine = finalSmoothedThresholds.mapIndexed { index, value ->
+            Entry(index.toFloat(), value)
+        }
+
+        return GraphData(dailyLoadBars, longestRunThresholdLine, finalDateLabels)
     }
 }

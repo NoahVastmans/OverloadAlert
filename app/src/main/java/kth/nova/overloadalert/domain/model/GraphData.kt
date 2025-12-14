@@ -8,5 +8,6 @@ import com.github.mikephil.charting.data.Entry
  */
 data class GraphData(
     val dailyLoadBars: List<BarEntry> = emptyList(),
-    val longestRunThresholdLine: List<Entry> = emptyList()
+    val longestRunThresholdLine: List<Entry> = emptyList(),
+    val dateLabels: List<String> = emptyList()
 )

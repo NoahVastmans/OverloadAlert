@@ -147,7 +147,7 @@ class AnalyzeRunData {
         return result
     }
 
-    private fun calculateEwma(data: List<Float>, span: Int): List<Float> {
+    internal fun calculateEwma(data: List<Float>, span: Int): List<Float> {
         val alpha = 2.0f / (span + 1.0f)
         val ewma = mutableListOf<Float>()
         if (data.isNotEmpty()) {
