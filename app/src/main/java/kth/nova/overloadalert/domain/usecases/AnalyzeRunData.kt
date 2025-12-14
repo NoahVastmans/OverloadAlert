@@ -114,7 +114,6 @@ class AnalyzeRunData {
         }
     }
 
-    // ... other functions remain the same ...
     private fun createDailyLoadSeries(runs: List<Run>, startDate: LocalDate, endDate: LocalDate): List<Float> {
         val dailyLoadMap = runs.groupBy { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
             .mapValues { (_, runsOnDay) -> runsOnDay.sumOf { it.distance.toDouble() }.toFloat() }
@@ -213,7 +212,7 @@ class AnalyzeRunData {
         return mergedRuns.reversed()
     }
 
-    private fun getStableLongestRun(runs: List<Run>): Float {
+    internal fun getStableLongestRun(runs: List<Run>): Float {
         if (runs.size < 4) {
             return runs.maxOfOrNull { it.distance } ?: 0f
         }

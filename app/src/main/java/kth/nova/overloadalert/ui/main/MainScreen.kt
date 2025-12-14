@@ -64,7 +64,7 @@ fun MainScreen(appComponent: AppComponent) {
                 HistoryScreen(viewModel = viewModel(factory = appComponent.historyViewModelFactory))
             }
             composable(Screen.Graphs.route) {
-                GraphsScreen()
+                GraphsScreen(appComponent = appComponent)
             }
         }
     }
