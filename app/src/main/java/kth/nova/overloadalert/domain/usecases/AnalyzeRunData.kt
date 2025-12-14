@@ -64,7 +64,7 @@ class AnalyzeRunData {
             stableBaseline
         }
         
-        val recommendedTodaysRun = max(0f, min(safeLongestRunForDisplay * 1.1f, chronicLoad * 1.3f - acuteLoad))
+        val recommendedTodaysRun = max(0f, min(safeLongestRunForDisplay * 1.1f - acuteLoad, chronicLoad * 1.3f - acuteLoad))
         val todaysLoad = dailyLoads.lastOrNull() ?: 0f
         val maxWeeklyLoad = max(0f, chronicLoad * 1.3f - todaysLoad)
 
