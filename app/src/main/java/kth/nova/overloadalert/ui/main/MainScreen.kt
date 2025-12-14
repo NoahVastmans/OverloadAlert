@@ -18,13 +18,14 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kth.nova.overloadalert.di.AppComponent
 import kth.nova.overloadalert.ui.navigation.Screen
+import kth.nova.overloadalert.ui.screens.graphs.GraphsScreen
 import kth.nova.overloadalert.ui.screens.history.HistoryScreen
 import kth.nova.overloadalert.ui.screens.home.HomeScreen
 
 @Composable
 fun MainScreen(appComponent: AppComponent) {
     val navController = rememberNavController()
-    val navItems = listOf(Screen.Home, Screen.History)
+    val navItems = listOf(Screen.Home, Screen.History, Screen.Graphs)
 
     Scaffold(
         bottomBar = {
@@ -61,6 +62,9 @@ fun MainScreen(appComponent: AppComponent) {
             }
             composable(Screen.History.route) {
                 HistoryScreen(viewModel = viewModel(factory = appComponent.historyViewModelFactory))
+            }
+            composable(Screen.Graphs.route) {
+                GraphsScreen()
             }
         }
     }
