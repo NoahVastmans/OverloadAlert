@@ -1,5 +1,6 @@
 package kth.nova.overloadalert.domain.usecases
 
+import android.util.Log
 import androidx.compose.ui.graphics.Color
 import kth.nova.overloadalert.data.local.Run
 import kth.nova.overloadalert.domain.model.AcwrAssessment
@@ -38,12 +39,15 @@ class AnalyzeRunData {
 
         val acwrAssessment = if (chronicLoad > 0) {
             val ratio = acuteLoad / chronicLoad
-            when {
+            Log.d("AnalyzeRunData", "ACWR Calculation: Acute=%.2f, Chronic=%.2f, Ratio=%.2f".format(acuteLoad, chronicLoad, ratio))
+            val assessment = when {
                 ratio > 2.0f -> AcwrAssessment(AcwrRiskLevel.HIGH_OVERTRAINING, ratio, "")
                 ratio > 1.3f -> AcwrAssessment(AcwrRiskLevel.MODERATE_OVERTRAINING, ratio, "")
                 ratio > 0.8f -> AcwrAssessment(AcwrRiskLevel.OPTIMAL, ratio, "")
                 else -> AcwrAssessment(AcwrRiskLevel.UNDERTRAINING, ratio, "")
             }
+            Log.d("AnalyzeRunData", "Determined ACWR Risk Level: ${assessment.riskLevel}")
+            assessment
         } else null
 
         val mostRecentRun = mergedRuns.first()
@@ -54,6 +58,7 @@ class AnalyzeRunData {
             OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(thirtyDaysBeforeMostRecent)
         }
         val stableBaseline = getStableLongestRun(relevantPrecedingRuns)
+        Log.d("AnalyzeRunData", "Stable Baseline = ${stableBaseline}'")
         val singleRunRiskAssessment = calculateRisk(mostRecentRun.distance, stableBaseline)
 
         val safeLongestRunForDisplay = if (mostRecentRun.distance > stableBaseline * 1.1f && stableBaseline > 0) {
@@ -63,12 +68,20 @@ class AnalyzeRunData {
         } else {
             stableBaseline
         }
-        
-        val recommendedTodaysRun = max(0f, min(safeLongestRunForDisplay * 1.1f - (acuteLoadSeries.lastOrNull() ?: 0f), chronicLoad * 1.3f - acuteLoad))
+
+        val remainingLongestRun = safeLongestRunForDisplay * 1.1f - (dailyLoads.lastOrNull() ?: 0f)
+        Log.d("AnalyzeRunData", "Remaining Longest Run = ${remainingLongestRun}'")
+        val remainingChronicLoad = chronicLoad * 1.3f - acuteLoad
+        Log.d("AnalyzeRunData", "Remaining Chronic Load = ${remainingChronicLoad}'")
+        val recommendedTodaysRun = max(0f, min(remainingLongestRun, remainingChronicLoad))
+        Log.d("AnalyzeRunData", "Recommended Todays Run = ${recommendedTodaysRun}'")
         val todaysLoad = dailyLoads.lastOrNull() ?: 0f
         val maxWeeklyLoad = max(0f, chronicLoad * 1.3f - todaysLoad)
+        Log.d("AnalyzeRunData", "Max Weekly Load = ${maxWeeklyLoad}'")
+
 
         val combinedRisk = generateCombinedRisk(singleRunRiskAssessment, acwrAssessment)
+        Log.d("AnalyzeRunData", "Final Combined Risk: Title='${combinedRisk.title}'")
 
         return RunAnalysis(acuteLoad, chronicLoad, recommendedTodaysRun, maxWeeklyLoad, combinedRisk)
     }

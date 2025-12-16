@@ -13,10 +13,10 @@ class GenerateGraphData(private val analyzeRunData: AnalyzeRunData) {
         if (runs.isEmpty()) return GraphData()
 
         val today = LocalDate.now()
-        // We need a longer history to calculate the initial chronic load correctly (28 days + warm-up).
-        val calculationStartDate = today.minusDays(60)
+        // Use the same logic as AnalyzeRunData: find the earliest run to start calculations.
+        val calculationStartDate = runs.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
 
-        // Use the shared helper function to get a full series of daily loads.
+        // Use the shared helper function to get a full series of daily loads from the very beginning.
         val dailyLoads = analyzeRunData.createDailyLoadSeries(runs, calculationStartDate, today)
 
         // --- Generate Data for Chart 2 (ACWR) ---
@@ -28,7 +28,7 @@ class GenerateGraphData(private val analyzeRunData: AnalyzeRunData) {
         val chronicLoadSeries = analyzeRunData.calculateEwma(cappedAcuteLoadSeries, 28)
 
         // --- Generate Data for Chart 1 (Longest Run) ---
-        val longestRunThresholds = (0..60).map { i ->
+        val longestRunThresholds = (0 until dailyLoads.size).map { i ->
             val date = calculationStartDate.plusDays(i.toLong())
             val thirtyDaysBefore = date.minusDays(30)
             val precedingRuns = runs.filter { run ->
