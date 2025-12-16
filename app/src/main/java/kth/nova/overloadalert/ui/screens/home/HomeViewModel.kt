@@ -5,81 +5,79 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kth.nova.overloadalert.data.RunningRepository
 import kth.nova.overloadalert.data.TokenManager
-import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
+import kth.nova.overloadalert.domain.repository.AnalysisRepository
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class HomeViewModel(
+    analysisRepository: AnalysisRepository, // The new single source of truth
     private val runningRepository: RunningRepository,
-    analyzeRunData: AnalyzeRunData,
-    tokenManager: TokenManager
+    private val tokenManager: TokenManager
 ) : ViewModel() {
 
-    // Private mutable state for one-off events like snackbars
-    private val _eventState = MutableStateFlow(HomeUiState())
-
-    // Public immutable state combined from multiple flows
-    val uiState: StateFlow<HomeUiState> = combine(
-        runningRepository.getRunsForAnalysis(),
-        tokenManager.lastSyncTimestamp,
-        _eventState
-    ) { runs, lastSync, eventState ->
-        val analysis = analyzeRunData(runs)
-        HomeUiState(
-            isLoading = false, // Data is now flowing, so we are not in the initial loading state
-            runAnalysis = analysis,
-            lastSyncTime = lastSync,
-            syncErrorMessage = eventState.syncErrorMessage
-        )
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = HomeUiState(isLoading = true) // The very first state is loading
-    )
+    private val _uiState = MutableStateFlow(HomeUiState())
+    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     init {
-        // Auto-refresh data if the cache is stale on startup
-        val lastSync = tokenManager.lastSyncTimestamp.value
-        val isCacheStale = (System.currentTimeMillis() - lastSync) > 3600 * 1000 // 1 hour
-        if (isCacheStale) {
-            refreshData()
-        }
+        analysisRepository.latestAnalysis
+            .onEach { analysisData ->
+                _uiState.update {
+                    it.copy(
+                        isLoading = analysisData == null,
+                        runAnalysis = analysisData?.runAnalysis
+                    )
+                }
+            }
+            .launchIn(viewModelScope)
+
+        tokenManager.lastSyncTimestamp
+            .onEach { lastSyncTime ->
+                _uiState.update { it.copy(lastSyncTime = lastSyncTime) }
+            }
+            .launchIn(viewModelScope)
     }
 
     fun refreshData() {
         viewModelScope.launch {
-            val syncResult = runningRepository.syncRuns()
-            if (syncResult.isFailure) {
-                _eventState.update { it.copy(syncErrorMessage = "Sync failed. No internet connection?") }
+            _uiState.update { it.copy(isLoading = true) }
+            val result = runningRepository.syncRuns()
+            if (result.isFailure) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        syncErrorMessage = "Sync failed: ${result.exceptionOrNull()?.message}"
+                    )
+                }
             }
+            // On success, the AnalysisRepository's flow will automatically trigger an update.
         }
     }
-    
+
     fun onSyncErrorShown() {
-        _eventState.update { it.copy(syncErrorMessage = null) }
+        _uiState.update { it.copy(syncErrorMessage = null) }
     }
 
     fun clearAllData() {
         viewModelScope.launch {
             runningRepository.clearAllRuns()
+            tokenManager.clearTokens()
         }
     }
 
     companion object {
         fun provideFactory(
+            analysisRepository: AnalysisRepository,
             runningRepository: RunningRepository,
-            analyzeRunData: AnalyzeRunData,
             tokenManager: TokenManager
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return HomeViewModel(runningRepository, analyzeRunData, tokenManager) as T
+                return HomeViewModel(analysisRepository, runningRepository, tokenManager) as T
             }
         }
     }

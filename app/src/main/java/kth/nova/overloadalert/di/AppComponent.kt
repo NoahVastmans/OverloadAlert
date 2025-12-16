@@ -11,8 +11,8 @@ import kth.nova.overloadalert.data.local.AppDatabase
 import kth.nova.overloadalert.data.remote.StravaApiService
 import kth.nova.overloadalert.data.remote.StravaAuthService
 import kth.nova.overloadalert.data.remote.TokenAuthenticator
+import kth.nova.overloadalert.domain.repository.AnalysisRepository
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
-import kth.nova.overloadalert.domain.usecases.GenerateGraphData
 import kth.nova.overloadalert.ui.screens.graphs.GraphsViewModel
 import kth.nova.overloadalert.ui.screens.history.HistoryViewModel
 import kth.nova.overloadalert.ui.screens.home.HomeViewModel
@@ -84,12 +84,13 @@ class AppComponent(context: Context) {
         AnalyzeRunData()
     }
 
-    private val generateGraphData: GenerateGraphData by lazy {
-        GenerateGraphData(analyzeRunData)
+    // The new single source of truth for analysis data
+    val analysisRepository: AnalysisRepository by lazy {
+        AnalysisRepository(runningRepository, analyzeRunData)
     }
 
     val homeViewModelFactory: ViewModelProvider.Factory by lazy {
-        HomeViewModel.provideFactory(runningRepository, analyzeRunData, tokenManager)
+        HomeViewModel.provideFactory(analysisRepository, runningRepository, tokenManager)
     }
 
     val authViewModelFactory: ViewModelProvider.Factory by lazy {
@@ -101,6 +102,6 @@ class AppComponent(context: Context) {
     }
 
     val graphsViewModelFactory: ViewModelProvider.Factory by lazy {
-        GraphsViewModel.provideFactory(runningRepository, generateGraphData)
+        GraphsViewModel.provideFactory(analysisRepository)
     }
 }

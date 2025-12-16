@@ -29,7 +29,7 @@ class SyncWorker(
                 if (allRuns.size > 1) {
                     val analysis = analyzeRunData(allRuns)
 
-                    analysis?.combinedRisk?.let { risk ->
+                    analysis.runAnalysis?.combinedRisk?.let { risk ->
                         when (risk.title) {
                             "Optimal", "De-training/Recovery" -> {
                                 notificationHelper.showEncouragementNotification(risk.title, risk.message)
