@@ -22,10 +22,11 @@ class SyncWorker(
             notificationHelper.createNotificationChannel() // Ensure channel is created
             
             val syncResult = runningRepository.syncRuns()
+            val dataWasChanged = syncResult.getOrNull() ?: false
 
-            if (syncResult.isSuccess) {
+            // Only send a notification if the sync was successful AND data actually changed.
+            if (dataWasChanged) {
                 val allRuns = runningRepository.getAllRuns().first()
-                // We need at least two runs for the analysis to be meaningful after a new sync
                 if (allRuns.size > 1) {
                     val analysis = analyzeRunData(allRuns)
 
