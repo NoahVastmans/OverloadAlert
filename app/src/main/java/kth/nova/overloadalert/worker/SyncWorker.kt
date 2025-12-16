@@ -1,63 +1,50 @@
 package kth.nova.overloadalert.worker
 
 import android.content.Context
+import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import kth.nova.overloadalert.OverloadAlertApplication
-import kth.nova.overloadalert.domain.model.RiskLevel
-import kth.nova.overloadalert.util.NotificationHelper
+import kth.nova.overloadalert.data.RunningRepository
+import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
 import kotlinx.coroutines.flow.first
 
 class SyncWorker(
     appContext: Context,
-    workerParams: WorkerParameters
+    workerParams: WorkerParameters,
+    private val runningRepository: RunningRepository,
+    private val analyzeRunData: AnalyzeRunData
 ) : CoroutineWorker(appContext, workerParams) {
 
+    private val notificationHelper = NotificationHelper(appContext)
+
     override suspend fun doWork(): Result {
-        val appComponent = (applicationContext as OverloadAlertApplication).appComponent
-        val runningRepository = appComponent.runningRepository
-        val analyzeRunData = appComponent.analyzeRunData
-        val notificationHelper = NotificationHelper(applicationContext)
-
         return try {
-            // 1. Get a snapshot of runs before the sync
-            val runsBeforeSync = runningRepository.getAllRuns().first().map { it.id }.toSet()
-
-            // 2. Perform the sync
+            notificationHelper.createNotificationChannel() // Ensure channel is created
+            
             val syncResult = runningRepository.syncRuns()
 
             if (syncResult.isSuccess) {
-                // 3. Get a snapshot of runs after the sync
-                val runsAfterSync = runningRepository.getAllRuns().first()
+                val allRuns = runningRepository.getAllRuns().first()
+                // We need at least two runs for the analysis to be meaningful after a new sync
+                if (allRuns.size > 1) {
+                    val analysis = analyzeRunData(allRuns)
 
-                // 4. Identify which runs are new
-                val newRuns = runsAfterSync.filter { it.id !in runsBeforeSync }
-
-                if (newRuns.isNotEmpty()) {
-                    // 5. Analyze the full history to get risk for all runs
-                    val allAnalyzedRuns = analyzeRunData.analyzeFullHistory(runsAfterSync)
-
-                    // 6. Find the highest risk among the NEW runs
-                    val highestRiskNewRun = allAnalyzedRuns
-                        .filter { analyzedRun -> analyzedRun.run.id in newRuns.map { it.id } }
-                        .maxByOrNull { it.singleRunRiskAssessment.riskLevel.ordinal }
-
-                    highestRiskNewRun?.let {
-                        val risk = it.singleRunRiskAssessment.riskLevel
-                        // 7. Send a notification if any new run is high or very high risk
-                        if (risk == RiskLevel.HIGH || risk == RiskLevel.VERY_HIGH) {
-                            notificationHelper.createNotificationChannel()
-                            notificationHelper.showHighRiskNotification(
-                                it.singleRunRiskAssessment.message
-                            )
+                    analysis?.combinedRisk?.let { risk ->
+                        when (risk.title) {
+                            "Optimal", "De-training/Recovery" -> {
+                                notificationHelper.showEncouragementNotification(risk.title, risk.message)
+                            }
+                            else -> {
+                                // Any other title is considered a warning
+                                notificationHelper.showWarningNotification(risk.title, risk.message)
+                            }
                         }
                     }
                 }
-                Result.success()
-            } else {
-                Result.failure()
             }
+            Result.success()
         } catch (e: Exception) {
+            Log.e("SyncWorker", "Error during background sync", e)
             Result.failure()
         }
     }

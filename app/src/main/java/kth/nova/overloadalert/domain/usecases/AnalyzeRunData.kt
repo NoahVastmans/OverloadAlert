@@ -81,34 +81,34 @@ class AnalyzeRunData {
         when (acwrRiskLevel) {
             AcwrRiskLevel.UNDERTRAINING -> {
                 when (runRiskLevel) {
-                    RiskLevel.NONE -> return CombinedRisk("De-training/Recovery", "Dummy Message: Undertraining and no single run risk.", Color.Blue)
-                    RiskLevel.MODERATE -> return CombinedRisk("Risky Spike", "Dummy Message: Undertraining with a moderate single run.", Color.Yellow)
-                    RiskLevel.HIGH -> return CombinedRisk("High Risk Spike", "Dummy Message: Undertraining with a high-risk single run.", Color.Red)
-                    RiskLevel.VERY_HIGH -> return CombinedRisk("Very High Risk Spike", "Dummy Message: Undertraining with a very high-risk single run.", Color.Red)
+                    RiskLevel.NONE -> return CombinedRisk("De-training/Recovery", "Your recent training load is low, and this run does not represent a spike. While injury risk is low, prolonged undertraining may limit performance gains.", Color.Blue)
+                    RiskLevel.MODERATE -> return CombinedRisk("Risky Spike", "Your overall training load has been low, and this run is noticeably longer than what you’ve done recently. Sudden increases after undertraining can raise injury risk.", Color.Yellow)
+                    RiskLevel.HIGH -> return CombinedRisk("High Risk Spike", "You are coming from a low training base, and this run is a large jump in distance. This combination significantly increases injury risk due to insufficient adaptation.", Color.Red)
+                    RiskLevel.VERY_HIGH -> return CombinedRisk("Very High Risk Spike", "Your training load has been very low, and this run is more than double your recent longest effort. This is a major spike and carries a very high risk of injury.", Color.Red)
                 }
             }
             AcwrRiskLevel.OPTIMAL -> {
                 when (runRiskLevel) {
-                    RiskLevel.NONE -> return CombinedRisk("Optimal", "Dummy Message: Optimal load and no single run risk.", Color.Green)
-                    RiskLevel.MODERATE -> return CombinedRisk("Caution", "Dummy Message: Optimal load but a moderate single run.", Color.Yellow)
-                    RiskLevel.HIGH -> return CombinedRisk("Warning", "Dummy Message: Optimal load but a high-risk single run.", Color.Red)
-                    RiskLevel.VERY_HIGH -> return CombinedRisk("Danger", "Dummy Message: Optimal load but a very high-risk single run.", Color.Red)
+                    RiskLevel.NONE -> return CombinedRisk("Optimal", "Your training load is well balanced, and this run fits within your recent training pattern. Injury risk is currently low.", Color.Green)
+                    RiskLevel.MODERATE -> return CombinedRisk("Caution", "Your overall load is well managed, but this run is somewhat longer than usual. Monitor recovery and avoid stacking similar sessions too soon.", Color.Yellow)
+                    RiskLevel.HIGH -> return CombinedRisk("Warning", "Your weekly load is optimal, but this run is a large distance increase. Even with good fitness, big single-run spikes can elevate injury risk.", Color.Red)
+                    RiskLevel.VERY_HIGH -> return CombinedRisk("Danger", "Despite a well-balanced training load, this run is more than double your recent longest effort. This sudden spike places you at high injury risk.", Color.Red)
                 }
             }
             AcwrRiskLevel.MODERATE_OVERTRAINING -> {
                 when (runRiskLevel) {
-                    RiskLevel.NONE -> return CombinedRisk("Overreaching", "Dummy Message: Moderate overtraining risk.", Color.Yellow)
-                    RiskLevel.MODERATE -> return CombinedRisk("High Risk", "Dummy Message: Moderate overtraining and a moderate single run.", Color.Red)
-                    RiskLevel.HIGH -> return CombinedRisk("Very High Risk", "Dummy Message: Moderate overtraining and a high-risk single run.", Color.Red)
-                    RiskLevel.VERY_HIGH -> return CombinedRisk("Extreme Risk", "Dummy Message: Moderate overtraining and a very high-risk single run.", Color.Red)
+                    RiskLevel.NONE -> return CombinedRisk("Overreaching", "Your overall training load is elevated, indicating accumulated fatigue. Even without a run spike, recovery should be prioritized.", Color.Yellow)
+                    RiskLevel.MODERATE -> return CombinedRisk("High Risk", "You are already training above your optimal load, and this run adds additional stress. Injury risk is high if recovery is insufficient.", Color.Red)
+                    RiskLevel.HIGH -> return CombinedRisk("Very High Risk", "Your training load is high, and this run represents a major distance increase. This combination substantially increases injury risk.", Color.Red)
+                    RiskLevel.VERY_HIGH -> return CombinedRisk("Extreme Risk", "You are in an overtrained state, and this run is an extreme spike compared to recent training. The risk of injury is very high.", Color.Red)
                 }
             }
             AcwrRiskLevel.HIGH_OVERTRAINING -> {
                 when (runRiskLevel) {
-                    RiskLevel.NONE -> return CombinedRisk("High Overtraining Risk", "Dummy Message: High overtraining risk.", Color.Red)
-                    RiskLevel.MODERATE -> return CombinedRisk("Very High Risk", "Dummy Message: High overtraining and a moderate single run.", Color.Red)
-                    RiskLevel.HIGH -> return CombinedRisk("Extreme Risk", "Dummy Message: High overtraining and a high-risk single run.", Color.Red)
-                    RiskLevel.VERY_HIGH -> return CombinedRisk("Danger Zone", "Dummy Message: High overtraining and a very high-risk single run.", Color.Red)
+                    RiskLevel.NONE -> return CombinedRisk("High Overtraining Risk", "Your recent training load is extremely high, suggesting significant accumulated fatigue. Even normal runs carry increased injury risk.", Color.Red)
+                    RiskLevel.MODERATE -> return CombinedRisk("Very High Risk", "You are heavily overloaded, and this run adds further stress. Injury risk is very high and recovery is strongly advised.", Color.Red)
+                    RiskLevel.HIGH -> return CombinedRisk("Extreme Risk", "Your training load is excessive, and this run is a large distance jump. This is an extreme risk scenario for injury.", Color.Red)
+                    RiskLevel.VERY_HIGH -> return CombinedRisk("Danger Zone", "Your training load is far beyond optimal, and this run is more than double your recent longest effort. This places you in a critical injury risk zone.", Color.Red)
                 }
             }
         }
