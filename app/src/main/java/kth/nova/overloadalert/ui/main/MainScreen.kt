@@ -23,7 +23,7 @@ import kth.nova.overloadalert.ui.screens.history.HistoryScreen
 import kth.nova.overloadalert.ui.screens.home.HomeScreen
 import kth.nova.overloadalert.ui.screens.home.HomeViewModel
 import kth.nova.overloadalert.ui.screens.plan.PlanScreen
-import kth.nova.overloadalert.ui.screens.plan.PreferencesScreen
+import kth.nova.overloadalert.ui.screens.preferences.PreferencesScreen
 
 @Composable
 fun MainScreen(appComponent: AppComponent) {

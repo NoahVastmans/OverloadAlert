@@ -1,4 +1,4 @@
-package kth.nova.overloadalert.ui.screens.plan
+package kth.nova.overloadalert.ui.screens.preferences
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider

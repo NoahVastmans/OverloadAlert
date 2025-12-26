@@ -21,7 +21,7 @@ import kth.nova.overloadalert.ui.screens.history.HistoryViewModel
 import kth.nova.overloadalert.ui.screens.home.HomeViewModel
 import kth.nova.overloadalert.ui.screens.login.AuthViewModel
 import kth.nova.overloadalert.ui.screens.plan.PlanViewModel
-import kth.nova.overloadalert.ui.screens.plan.PreferencesViewModel
+import kth.nova.overloadalert.ui.screens.preferences.PreferencesViewModel
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
