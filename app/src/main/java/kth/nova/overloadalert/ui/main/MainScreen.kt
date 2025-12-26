@@ -21,11 +21,15 @@ import kth.nova.overloadalert.ui.navigation.Screen
 import kth.nova.overloadalert.ui.screens.graphs.GraphsScreen
 import kth.nova.overloadalert.ui.screens.history.HistoryScreen
 import kth.nova.overloadalert.ui.screens.home.HomeScreen
+import kth.nova.overloadalert.ui.screens.home.HomeViewModel
+import kth.nova.overloadalert.ui.screens.plan.PlanScreen
+import kth.nova.overloadalert.ui.screens.plan.PreferencesScreen
 
 @Composable
 fun MainScreen(appComponent: AppComponent) {
     val navController = rememberNavController()
-    val navItems = listOf(Screen.Home, Screen.History, Screen.Graphs)
+    val navItems = listOf(Screen.Home, Screen.History, Screen.Graphs, Screen.Plan)
+    val homeViewModel: HomeViewModel = viewModel(factory = appComponent.homeViewModelFactory)
 
     Scaffold(
         bottomBar = {
@@ -58,13 +62,22 @@ fun MainScreen(appComponent: AppComponent) {
             Modifier.padding(innerPadding)
         ) {
             composable(Screen.Home.route) {
-                HomeScreen(viewModel = viewModel(factory = appComponent.homeViewModelFactory))
+                HomeScreen(
+                    viewModel = homeViewModel,
+                    onNavigateToPreferences = { navController.navigate(Screen.Preferences.route) }
+                )
             }
             composable(Screen.History.route) {
                 HistoryScreen(viewModel = viewModel(factory = appComponent.historyViewModelFactory))
             }
             composable(Screen.Graphs.route) {
                 GraphsScreen(appComponent = appComponent)
+            }
+            composable(Screen.Plan.route) {
+                PlanScreen(appComponent = appComponent)
+            }
+            composable(Screen.Preferences.route) {
+                PreferencesScreen(appComponent = appComponent)
             }
         }
     }

@@ -2,12 +2,16 @@ package kth.nova.overloadalert.ui.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
 
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     object Home : Screen("home", "Home", Icons.Default.Home)
     object History : Screen("history", "History", Icons.Default.History)
-    object Graphs : Screen("graphs", "Graphs", Icons.Default.BarChart) // Re-add the Graphs screen
+    object Graphs : Screen("graphs", "Graphs", Icons.Default.BarChart)
+    object Plan : Screen("plan", "Plan", Icons.Default.CalendarMonth) 
+    object Preferences : Screen("preferences", "Preferences", Icons.Default.Settings) 
 }
