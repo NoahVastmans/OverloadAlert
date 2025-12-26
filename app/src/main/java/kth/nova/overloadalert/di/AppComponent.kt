@@ -11,12 +11,17 @@ import kth.nova.overloadalert.data.local.AppDatabase
 import kth.nova.overloadalert.data.remote.StravaApiService
 import kth.nova.overloadalert.data.remote.StravaAuthService
 import kth.nova.overloadalert.data.remote.TokenAuthenticator
+import kth.nova.overloadalert.domain.plan.WeeklyTrainingPlanGenerator
 import kth.nova.overloadalert.domain.repository.AnalysisRepository
+import kth.nova.overloadalert.domain.repository.PreferencesRepository
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
+import kth.nova.overloadalert.domain.usecases.HistoricalDataAnalyzer
 import kth.nova.overloadalert.ui.screens.graphs.GraphsViewModel
 import kth.nova.overloadalert.ui.screens.history.HistoryViewModel
 import kth.nova.overloadalert.ui.screens.home.HomeViewModel
 import kth.nova.overloadalert.ui.screens.login.AuthViewModel
+import kth.nova.overloadalert.ui.screens.plan.PlanViewModel
+import kth.nova.overloadalert.ui.screens.plan.PreferencesViewModel
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -72,36 +77,24 @@ class AppComponent(context: Context) {
         ).build()
     }
 
-    val authRepository: AuthRepository by lazy {
-        AuthRepository(stravaAuthService, tokenManager)
-    }
+    val authRepository: AuthRepository by lazy { AuthRepository(stravaAuthService, tokenManager) }
+    val runningRepository: RunningRepository by lazy { RunningRepository(appDatabase.runDao(), stravaApiService, tokenManager) }
+    val preferencesRepository: PreferencesRepository by lazy { PreferencesRepository(context) }
 
-    val runningRepository: RunningRepository by lazy {
-        RunningRepository(appDatabase.runDao(), stravaApiService, tokenManager)
-    }
+    val analyzeRunData: AnalyzeRunData by lazy { AnalyzeRunData() }
+    private val historicalDataAnalyzer: HistoricalDataAnalyzer by lazy { HistoricalDataAnalyzer() }
+    private val weeklyTrainingPlanGenerator: WeeklyTrainingPlanGenerator by lazy { WeeklyTrainingPlanGenerator() }
 
-    val analyzeRunData: AnalyzeRunData by lazy {
-        AnalyzeRunData()
-    }
+    val analysisRepository: AnalysisRepository by lazy { AnalysisRepository(runningRepository, analyzeRunData) }
 
-    // The new single source of truth for analysis data
-    val analysisRepository: AnalysisRepository by lazy {
-        AnalysisRepository(runningRepository, analyzeRunData)
+    val authViewModelFactory: ViewModelProvider.Factory by lazy { AuthViewModel.provideFactory(authRepository, tokenManager) }
+    val homeViewModelFactory: ViewModelProvider.Factory by lazy { HomeViewModel.provideFactory(analysisRepository, runningRepository, tokenManager) }
+    val historyViewModelFactory: ViewModelProvider.Factory by lazy { HistoryViewModel.provideFactory(runningRepository, analyzeRunData) }
+    val graphsViewModelFactory: ViewModelProvider.Factory by lazy { GraphsViewModel.provideFactory(analysisRepository) }
+    val planViewModelFactory: ViewModelProvider.Factory by lazy {
+        PlanViewModel.provideFactory(analysisRepository, preferencesRepository, historicalDataAnalyzer, weeklyTrainingPlanGenerator, runningRepository)
     }
-
-    val homeViewModelFactory: ViewModelProvider.Factory by lazy {
-        HomeViewModel.provideFactory(analysisRepository, runningRepository, tokenManager)
-    }
-
-    val authViewModelFactory: ViewModelProvider.Factory by lazy {
-        AuthViewModel.provideFactory(authRepository, tokenManager)
-    }
-
-    val historyViewModelFactory: ViewModelProvider.Factory by lazy {
-        HistoryViewModel.provideFactory(runningRepository, analyzeRunData)
-    }
-
-    val graphsViewModelFactory: ViewModelProvider.Factory by lazy {
-        GraphsViewModel.provideFactory(analysisRepository)
+    val preferencesViewModelFactory: ViewModelProvider.Factory by lazy {
+        PreferencesViewModel.provideFactory(preferencesRepository)
     }
 }

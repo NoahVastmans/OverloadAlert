@@ -77,7 +77,10 @@ fun MainScreen(appComponent: AppComponent) {
                 PlanScreen(appComponent = appComponent)
             }
             composable(Screen.Preferences.route) {
-                PreferencesScreen(appComponent = appComponent)
+                PreferencesScreen(
+                    appComponent = appComponent,
+                    onNavigateBack = { navController.popBackStack() }
+                )
             }
         }
     }
