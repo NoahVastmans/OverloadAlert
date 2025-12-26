@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -86,9 +85,6 @@ fun HomeScreen(viewModel: HomeViewModel) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.clearAllData() }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Clear Database")
-                    }
                     IconButton(onClick = { viewModel.refreshData() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh Data")
                     }

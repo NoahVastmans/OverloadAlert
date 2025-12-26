@@ -62,13 +62,6 @@ class HomeViewModel(
         _uiState.update { it.copy(syncErrorMessage = null) }
     }
 
-    fun clearAllData() {
-        viewModelScope.launch {
-            runningRepository.clearAllRuns()
-            tokenManager.clearTokens()
-        }
-    }
-
     companion object {
         fun provideFactory(
             analysisRepository: AnalysisRepository,
