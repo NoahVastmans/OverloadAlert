@@ -7,6 +7,7 @@ import androidx.work.WorkerParameters
 import kth.nova.overloadalert.data.RunningRepository
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
 import kotlinx.coroutines.flow.first
+import java.time.LocalDate
 
 class SyncWorker(
     appContext: Context,
@@ -28,7 +29,7 @@ class SyncWorker(
             if (dataWasChanged) {
                 val allRuns = runningRepository.getAllRuns().first()
                 if (allRuns.size > 1) {
-                    val analysis = analyzeRunData(allRuns)
+                    val analysis = analyzeRunData(allRuns, LocalDate.now()) // Pass the current date for live analysis
 
                     analysis.runAnalysis?.combinedRisk?.let { risk ->
                         when (risk.title) {

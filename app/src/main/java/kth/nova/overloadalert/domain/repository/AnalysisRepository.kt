@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import java.time.LocalDate
 
 /**
  * A central repository to hold the single source of truth for all analysis data.
@@ -20,7 +21,7 @@ class AnalysisRepository(
     coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.Default)
 ) {
     val latestAnalysis: StateFlow<UiAnalysisData?> = runningRepository.getAllRuns()
-        .map { runs -> analyzeRunData(runs) }
+        .map { runs -> analyzeRunData(runs, LocalDate.now()) } // Pass the current date for live analysis
         .stateIn(
             scope = coroutineScope,
             started = SharingStarted.WhileSubscribed(5000),

@@ -1,5 +1,6 @@
 package kth.nova.overloadalert.domain.usecases
 
+import android.util.Log
 import androidx.compose.ui.graphics.Color
 import com.github.mikephil.charting.data.BarEntry
 import com.github.mikephil.charting.data.Entry
@@ -14,10 +15,10 @@ import kotlin.math.min
 
 class AnalyzeRunData {
 
-    operator fun invoke(runs: List<Run>): UiAnalysisData {
+    operator fun invoke(runs: List<Run>, referenceDate: LocalDate): UiAnalysisData {
         if (runs.isEmpty()) return UiAnalysisData(null, null)
 
-        val today = LocalDate.now()
+        val today = referenceDate // Use the explicit reference date
         val startDate = runs.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
 
         // --- Full Historical Analysis ---
@@ -63,10 +64,10 @@ class AnalyzeRunData {
             stableBaseline
         }
 
-        val remainingLongestRun = safeLongestRunForDisplay * 1.1f - (dailyLoads.lastOrNull() ?: 0f)
+        val todaysLoad = dailyLoads.lastOrNull() ?: 0f
+        val remainingLongestRun = safeLongestRunForDisplay * 1.1f - todaysLoad
         val remainingChronicLoad = chronicLoad * 1.3f - acuteLoad
         val recommendedTodaysRun = max(0f, min(remainingLongestRun, remainingChronicLoad))
-        val todaysLoad = dailyLoads.lastOrNull() ?: 0f
         val maxWeeklyLoad = max(0f, chronicLoad * 1.3f - todaysLoad)
         val maxSafeLongRun = safeLongestRunForDisplay * 1.1f
         val minRecommendedTodaysRun = min(max(0f, chronicLoad * 0.8f - acuteLoad), maxSafeLongRun * 0.5f)
@@ -93,7 +94,6 @@ class AnalyzeRunData {
         val chronicLoadLine = chronicLoadSeries.takeLast(30).mapIndexed { index, value -> Entry(index.toFloat(), value) }
 
         val graphData = GraphData(dailyLoadBars, longestRunThresholdLine, finalDateLabels, acuteLoadLine, chronicLoadLine)
-
         return UiAnalysisData(runAnalysis, graphData)
     }
 
@@ -101,7 +101,6 @@ class AnalyzeRunData {
         val runRiskLevel = runRisk.riskLevel
         val acwrRiskLevel = acwr?.riskLevel ?: AcwrRiskLevel.OPTIMAL
 
-        // Dummy messages for you to replace
         when (acwrRiskLevel) {
             AcwrRiskLevel.UNDERTRAINING -> {
                 when (runRiskLevel) {
@@ -218,22 +217,35 @@ class AnalyzeRunData {
     }
 
     private fun mergeRuns(runs: List<Run>): List<Run> {
-        val sortedRuns = runs.reversed()
+        val sortedRuns = runs.sortedBy {
+            OffsetDateTime.parse(it.startDateLocal)
+        }
+
         val mergedRuns = mutableListOf<Run>()
+
         for (run in sortedRuns) {
             if (mergedRuns.isEmpty()) {
                 mergedRuns.add(run)
             } else {
                 val lastMergedRun = mergedRuns.last()
-                val hoursBetween = Duration.between(OffsetDateTime.parse(lastMergedRun.startDateLocal), OffsetDateTime.parse(run.startDateLocal)).toHours()
-                if (hoursBetween < 2) {
-                    mergedRuns[mergedRuns.size - 1] = lastMergedRun.copy(distance = lastMergedRun.distance + run.distance, movingTime = lastMergedRun.movingTime + run.movingTime)
+                val hoursBetween = Duration.between(
+                    OffsetDateTime.parse(lastMergedRun.startDateLocal),
+                    OffsetDateTime.parse(run.startDateLocal)
+                ).toHours()
+
+                if (hoursBetween in 0 until 2) {
+                    mergedRuns[mergedRuns.size - 1] =
+                        lastMergedRun.copy(
+                            distance = lastMergedRun.distance + run.distance,
+                            movingTime = lastMergedRun.movingTime + run.movingTime
+                        )
                 } else {
                     mergedRuns.add(run)
                 }
             }
         }
-        return mergedRuns.reversed()
+
+        return mergedRuns
     }
 
     internal fun getStableLongestRun(runs: List<Run>): Float {

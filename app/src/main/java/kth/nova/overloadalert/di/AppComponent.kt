@@ -92,7 +92,7 @@ class AppComponent(context: Context) {
     val historyViewModelFactory: ViewModelProvider.Factory by lazy { HistoryViewModel.provideFactory(runningRepository, analyzeRunData) }
     val graphsViewModelFactory: ViewModelProvider.Factory by lazy { GraphsViewModel.provideFactory(analysisRepository) }
     val planViewModelFactory: ViewModelProvider.Factory by lazy {
-        PlanViewModel.provideFactory(analysisRepository, preferencesRepository, historicalDataAnalyzer, weeklyTrainingPlanGenerator, runningRepository)
+        PlanViewModel.provideFactory(analysisRepository, preferencesRepository, historicalDataAnalyzer, weeklyTrainingPlanGenerator, runningRepository, analyzeRunData)
     }
     val preferencesViewModelFactory: ViewModelProvider.Factory by lazy {
         PreferencesViewModel.provideFactory(preferencesRepository)
