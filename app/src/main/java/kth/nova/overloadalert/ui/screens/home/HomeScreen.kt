@@ -148,6 +148,7 @@ fun RunAnalysisCard(analysis: RunAnalysis) {
             Text("Recommendations", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
             DataRow("Maximal Run Today", String.format("%.2f km", analysis.recommendedTodaysRun / 1000f))
+            DataRow("Minimal Run Today", String.format("%.2f km", analysis.minRecommendedTodaysRun / 1000f))
             DataRow("Maximal Volume This Week", String.format("%.2f km", analysis.maxWeeklyLoad / 1000f))
         }
     }

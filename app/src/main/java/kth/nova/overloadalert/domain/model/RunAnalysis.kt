@@ -9,5 +9,6 @@ data class RunAnalysis(
     val recommendedTodaysRun: Float,
     val maxWeeklyLoad: Float,
     val combinedRisk: CombinedRisk,
-    val maxSafeLongRun: Float = 0f // The recommended upper limit for a single long run
+    val maxSafeLongRun: Float = 0f, // The recommended upper limit for a single long run
+    val minRecommendedTodaysRun: Float = 0f // The recommended lower limit for a single run
 )
