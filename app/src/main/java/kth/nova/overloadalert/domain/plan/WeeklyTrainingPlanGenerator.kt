@@ -117,8 +117,8 @@ class WeeklyTrainingPlanGenerator {
 
         // Distribute Long Run volume
         val longRunDay = runTypes.entries.find { it.value == RunType.LONG }?.key
+        val longRunShare = (weeklyVolume * 0.38f).coerceAtMost(input.recentData.maxSafeLongRun)
         if (longRunDay != null) {
-            val longRunShare = (weeklyVolume * 0.38f).coerceAtMost(input.recentData.maxSafeLongRun)
             val longRunVolume = maxOf(minDaily, longRunShare)
             distances[longRunDay] = longRunVolume
             remainingVolume -= (longRunVolume - minDaily) // Only subtract the amount added *above* the minimum
@@ -127,7 +127,7 @@ class WeeklyTrainingPlanGenerator {
         // Distribute Moderate Run volume
         val moderateDays = runTypes.entries.filter { it.value == RunType.MODERATE }.map { it.key }
         if (moderateDays.isNotEmpty()) {
-            val moderateShare = (weeklyVolume * 0.25f) / moderateDays.size
+            val moderateShare = (longRunShare * 0.65f)
             val moderateVolume = maxOf(minDaily, moderateShare)
             moderateDays.forEach {
                 distances[it] = moderateVolume
@@ -142,6 +142,16 @@ class WeeklyTrainingPlanGenerator {
             easyDays.forEach { 
                 // Add the remaining share to the minimum already assigned
                 distances[it] = (distances[it] ?: minDaily) + easyShare
+            }
+        }
+
+        easyDays.forEach { easy ->
+            moderateDays.forEach { mod ->
+                if (distances[easy]!! > distances[mod]!!) {
+                    val delta = distances[easy]!! - distances[mod]!!
+                    distances[easy] = distances[mod]!!
+                    remainingVolume += delta
+                }
             }
         }
 

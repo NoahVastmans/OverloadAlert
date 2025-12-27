@@ -43,7 +43,7 @@ class PlanViewModel(
             val recentData = RecentData(
                 maxSafeLongRun = analysisData.runAnalysis?.maxSafeLongRun ?: 0f,
                 maxWeeklyVolume = analysisData.runAnalysis?.maxWeeklyLoad ?: 0f,
-                minDailyVolume = 2000f, // TODO: Make this dynamic
+                minDailyVolume = 1500f, // TODO: Make this dynamic
                 complianceScore = 1.0f, // TODO: Implement compliance tracking
                 restWeekRequired = false // TODO: Implement rest week logic
             )
