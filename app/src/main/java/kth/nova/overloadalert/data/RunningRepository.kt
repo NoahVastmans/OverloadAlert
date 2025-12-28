@@ -73,7 +73,4 @@ class RunningRepository(
         }
     }
 
-    suspend fun clearAllRuns() {
-        runDao.clearAll()
-    }
 }

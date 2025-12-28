@@ -28,7 +28,6 @@ class HomeViewModel(
             .onEach { analysisData ->
                 _uiState.update {
                     it.copy(
-                        isLoading = analysisData == null,
                         runAnalysis = analysisData?.runAnalysis
                     )
                 }
@@ -44,16 +43,16 @@ class HomeViewModel(
 
     fun refreshData() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true, syncErrorMessage = null) }
             val result = runningRepository.syncRuns()
-            if (result.isFailure) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        syncErrorMessage = "Sync failed: ${result.exceptionOrNull()?.message}"
-                    )
-                }
+
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    syncErrorMessage = result.exceptionOrNull()?.message
+                )
             }
+
             // On success, the AnalysisRepository's flow will automatically trigger an update.
         }
     }
