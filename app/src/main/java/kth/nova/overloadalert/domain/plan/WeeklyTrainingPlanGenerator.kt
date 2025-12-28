@@ -190,11 +190,12 @@ class WeeklyTrainingPlanGenerator {
     }
 
     private fun calculateWeeklyVolume(input: PlanInput): Float {
-        val baseVolume = input.recentData.maxWeeklyVolume
-        return if (input.recentData.complianceScore < 0.6f) {
-            baseVolume * 0.9f
-        } else {
-            baseVolume
+        val baseVolume = input.recentData.maxWeeklyVolume * 10 / 13 // reset to this weeks volume
+        // Adjust the base volume based on the user-selected progression rate
+        return when (input.userPreferences.progressionRate) {
+            ProgressionRate.RETAIN -> baseVolume
+            ProgressionRate.SLOW -> baseVolume * 1.1f    // A slight increase
+            ProgressionRate.FAST -> baseVolume * 1.3f    // Use the max safe volume
         }
     }
 

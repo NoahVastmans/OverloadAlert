@@ -7,6 +7,5 @@ data class RecentData(
     val maxSafeLongRun: Float,
     val maxWeeklyVolume: Float,
     val minDailyVolume: Float,
-    val complianceScore: Float,
     val restWeekRequired: Boolean
 )

@@ -37,7 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kth.nova.overloadalert.di.AppComponent
-import kth.nova.overloadalert.ui.screens.preferences.PreferencesViewModel
+import kth.nova.overloadalert.domain.plan.ProgressionRate
 import java.time.DayOfWeek
 import kotlin.math.roundToInt
 
@@ -48,7 +48,6 @@ fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {
     val uiState by viewModel.uiState.collectAsState()
     var showDialog by remember { mutableStateOf(false) }
 
-    // Intercept back presses to show the confirmation dialog
     BackHandler(enabled = true) {
         showDialog = true
     }
@@ -99,7 +98,6 @@ fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {
                     .padding(it)
                     .padding(16.dp)
             ) {
-                // Max runs per week slider
                 PreferenceItem("Maximum Runs Per Week: ${uiState.preferences.maxRunsPerWeek}") {
                     Slider(
                         value = uiState.preferences.maxRunsPerWeek.toFloat(),
@@ -115,7 +113,14 @@ fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Preferred long run days selector
+                PreferenceItem("Progression Rate") {
+                    ProgressionRateSelector(uiState.preferences.progressionRate) {
+                        viewModel.onPreferencesChanged(uiState.preferences.copy(progressionRate = it))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
                 PreferenceItem("Preferred Long Run Days") {
                     DayOfWeekSelector(
                         selectedDays = uiState.preferences.preferredLongRunDays,
@@ -129,7 +134,6 @@ fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Forbidden run days selector
                 PreferenceItem("Forbidden Run Days") {
                     DayOfWeekSelector(
                         selectedDays = uiState.preferences.forbiddenRunDays,
@@ -151,6 +155,24 @@ private fun PreferenceItem(title: String, content: @Composable () -> Unit) {
         Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Spacer(modifier = Modifier.height(8.dp))
         content()
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ProgressionRateSelector(selectedRate: ProgressionRate, onRateClick: (ProgressionRate) -> Unit) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ProgressionRate.values().forEach { rate ->
+            val isSelected = selectedRate == rate
+            FilterChip(
+                selected = isSelected,
+                onClick = { onRateClick(rate) },
+                label = { Text(rate.name.lowercase().replaceFirstChar { it.uppercase() }) }
+            )
+        }
     }
 }
 

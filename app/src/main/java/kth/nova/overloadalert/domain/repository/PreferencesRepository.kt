@@ -1,6 +1,7 @@
 package kth.nova.overloadalert.domain.repository
 
 import android.content.Context
+import kth.nova.overloadalert.domain.plan.ProgressionRate
 import kth.nova.overloadalert.domain.plan.UserPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,11 +24,17 @@ class PreferencesRepository(context: Context) {
         val forbiddenDays = sharedPreferences.getStringSet(KEY_FORBIDDEN_RUN_DAYS, emptySet())?.mapNotNull {
             try { DayOfWeek.valueOf(it) } catch (e: IllegalArgumentException) { null }
         }?.toSet() ?: emptySet()
+        val progressionRate = try {
+            ProgressionRate.valueOf(sharedPreferences.getString(KEY_PROGRESSION_RATE, ProgressionRate.SLOW.name) ?: ProgressionRate.SLOW.name)
+        } catch (e: IllegalArgumentException) {
+            ProgressionRate.SLOW
+        }
 
         return UserPreferences(
             maxRunsPerWeek = maxRuns,
             preferredLongRunDays = preferredDays,
-            forbiddenRunDays = forbiddenDays
+            forbiddenRunDays = forbiddenDays,
+            progressionRate = progressionRate
         )
     }
 
@@ -36,6 +43,7 @@ class PreferencesRepository(context: Context) {
             putInt(KEY_MAX_RUNS_PER_WEEK, preferences.maxRunsPerWeek)
             putStringSet(KEY_PREFERRED_LONG_RUN_DAYS, preferences.preferredLongRunDays.map { it.name }.toSet())
             putStringSet(KEY_FORBIDDEN_RUN_DAYS, preferences.forbiddenRunDays.map { it.name }.toSet())
+            putString(KEY_PROGRESSION_RATE, preferences.progressionRate.name)
             apply()
         }
         _preferencesFlow.update { preferences }
@@ -45,5 +53,6 @@ class PreferencesRepository(context: Context) {
         private const val KEY_MAX_RUNS_PER_WEEK = "max_runs_per_week"
         private const val KEY_PREFERRED_LONG_RUN_DAYS = "preferred_long_run_days"
         private const val KEY_FORBIDDEN_RUN_DAYS = "forbidden_run_days"
+        private const val KEY_PROGRESSION_RATE = "progression_rate"
     }
 }
