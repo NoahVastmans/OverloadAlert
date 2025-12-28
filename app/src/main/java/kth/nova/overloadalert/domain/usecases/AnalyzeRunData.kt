@@ -45,8 +45,8 @@ class AnalyzeRunData {
         } else null
 
         val mergedRuns = mergeRuns(runs)
-        val mostRecentRun = mergedRuns.first()
-        val precedingRuns = mergedRuns.drop(1)
+        val mostRecentRun = mergedRuns.last()
+        val precedingRuns = mergedRuns.dropLast(1)
 
         val thirtyDaysBeforeMostRecent = OffsetDateTime.parse(mostRecentRun.startDateLocal).toLocalDate().minusDays(30)
         val relevantPrecedingRuns = precedingRuns.filter {
@@ -184,7 +184,7 @@ class AnalyzeRunData {
     }
 
     fun analyzeFullHistory(allRuns: List<Run>): List<AnalyzedRun> {
-        val mergedRuns = mergeRuns(allRuns)
+        val mergedRuns = mergeRuns(allRuns).reversed()
         if (mergedRuns.isEmpty()) return emptyList()
 
         return mergedRuns.mapIndexed { index, run ->
