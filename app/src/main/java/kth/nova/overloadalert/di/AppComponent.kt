@@ -23,11 +23,18 @@ import kth.nova.overloadalert.ui.screens.home.HomeViewModel
 import kth.nova.overloadalert.ui.screens.login.AuthViewModel
 import kth.nova.overloadalert.ui.screens.plan.PlanViewModel
 import kth.nova.overloadalert.ui.screens.preferences.PreferencesViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.launchIn
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
 class AppComponent(context: Context) {
+
+    // Create an application-level coroutine scope
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val moshi = Moshi.Builder().build()
 
@@ -87,9 +94,9 @@ class AppComponent(context: Context) {
     private val weeklyTrainingPlanGenerator: WeeklyTrainingPlanGenerator by lazy { WeeklyTrainingPlanGenerator() }
 
     val analysisRepository: AnalysisRepository by lazy { AnalysisRepository(runningRepository, analyzeRunData) }
-    // Eagerly create the PlanRepository so it starts generating the plan on app startup
-    val planRepository: PlanRepository = PlanRepository(analysisRepository, preferencesRepository, runningRepository, historicalDataAnalyzer, weeklyTrainingPlanGenerator, analyzeRunData)
-
+    val planRepository: PlanRepository by lazy {
+        PlanRepository(analysisRepository, preferencesRepository, runningRepository, historicalDataAnalyzer, weeklyTrainingPlanGenerator, analyzeRunData, appScope)
+    }
 
     val authViewModelFactory: ViewModelProvider.Factory by lazy { AuthViewModel.provideFactory(authRepository, tokenManager) }
     val homeViewModelFactory: ViewModelProvider.Factory by lazy { HomeViewModel.provideFactory(analysisRepository, runningRepository, tokenManager) }
@@ -100,5 +107,11 @@ class AppComponent(context: Context) {
     }
     val preferencesViewModelFactory: ViewModelProvider.Factory by lazy {
         PreferencesViewModel.provideFactory(preferencesRepository)
+    }
+
+    init {
+        // Eagerly launch a collector for the plan. This acts as a permanent subscriber,
+        // keeping the upstream flow active and ensuring the plan is always ready.
+        planRepository.latestPlan.launchIn(appScope)
     }
 }

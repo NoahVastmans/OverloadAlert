@@ -121,7 +121,7 @@ class PlanRepository(
 
     }.stateIn(
         scope = coroutineScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Lazily,
         initialValue = null
     )
 }
