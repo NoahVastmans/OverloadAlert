@@ -105,7 +105,7 @@ class PlanRepository(
         val recentData = RecentData(
             maxSafeLongRun = adjustedMaxLongRun,
             baseWeeklyVolume = adjustedWeeklyVolume,
-            minDailyVolume = 2000f, // TODO: Make this dynamic
+            minDailyVolume = adjustedWeeklyVolume/10f,
             restWeekRequired = (acwrMultiplier < 1.0f || longRunMultiplier < 1.1f)
         )
 
