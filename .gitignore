@@ -13,3 +13,5 @@
 .externalNativeBuild
 .cxx
 local.properties
+.aiexclude
+app/src/main/java/kth/nova/overloadalert/data/.aiexclude
