@@ -13,6 +13,7 @@ import kth.nova.overloadalert.data.remote.StravaAuthService
 import kth.nova.overloadalert.data.remote.TokenAuthenticator
 import kth.nova.overloadalert.domain.plan.WeeklyTrainingPlanGenerator
 import kth.nova.overloadalert.domain.repository.AnalysisRepository
+import kth.nova.overloadalert.domain.repository.PlanRepository
 import kth.nova.overloadalert.domain.repository.PreferencesRepository
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
 import kth.nova.overloadalert.domain.usecases.HistoricalDataAnalyzer
@@ -86,13 +87,16 @@ class AppComponent(context: Context) {
     private val weeklyTrainingPlanGenerator: WeeklyTrainingPlanGenerator by lazy { WeeklyTrainingPlanGenerator() }
 
     val analysisRepository: AnalysisRepository by lazy { AnalysisRepository(runningRepository, analyzeRunData) }
+    // Eagerly create the PlanRepository so it starts generating the plan on app startup
+    val planRepository: PlanRepository = PlanRepository(analysisRepository, preferencesRepository, runningRepository, historicalDataAnalyzer, weeklyTrainingPlanGenerator, analyzeRunData)
+
 
     val authViewModelFactory: ViewModelProvider.Factory by lazy { AuthViewModel.provideFactory(authRepository, tokenManager) }
     val homeViewModelFactory: ViewModelProvider.Factory by lazy { HomeViewModel.provideFactory(analysisRepository, runningRepository, tokenManager) }
     val historyViewModelFactory: ViewModelProvider.Factory by lazy { HistoryViewModel.provideFactory(runningRepository, analyzeRunData) }
     val graphsViewModelFactory: ViewModelProvider.Factory by lazy { GraphsViewModel.provideFactory(analysisRepository) }
     val planViewModelFactory: ViewModelProvider.Factory by lazy {
-        PlanViewModel.provideFactory(analysisRepository, preferencesRepository, historicalDataAnalyzer, weeklyTrainingPlanGenerator, runningRepository, analyzeRunData)
+        PlanViewModel.provideFactory(planRepository)
     }
     val preferencesViewModelFactory: ViewModelProvider.Factory by lazy {
         PreferencesViewModel.provideFactory(preferencesRepository)
