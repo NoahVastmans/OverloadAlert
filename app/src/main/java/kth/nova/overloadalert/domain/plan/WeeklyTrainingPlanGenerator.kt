@@ -23,7 +23,7 @@ class WeeklyTrainingPlanGenerator {
         
         dailyDistances = rebalanceVolume(validatedDistances.toMutableMap(), weeklyVolume, runTypes, safeRanges)
 
-        val dailyPlans = DayOfWeek.values().map {
+        val dailyPlans = DayOfWeek.entries.map {
             DailyPlan(
                 dayOfWeek = it,
                 runType = runTypes[it] ?: RunType.REST,
@@ -94,7 +94,7 @@ class WeeklyTrainingPlanGenerator {
         analyzeRunData: AnalyzeRunData
     ): Pair<Map<DayOfWeek, Float>, Map<DayOfWeek, Pair<Float, Float>>> {
         val today = LocalDate.now()
-        val dayValues = DayOfWeek.values()
+        val dayValues = DayOfWeek.entries.toTypedArray()
         val todayIndex = today.dayOfWeek.value - 1
         val validationOrder = (0..6).map { dayValues[(todayIndex + it) % 7] }
         val historicalRuns = allRuns.filter {
@@ -136,7 +136,7 @@ class WeeklyTrainingPlanGenerator {
 
     private fun determineRunDays(input: PlanInput): Set<DayOfWeek> {
         val targetRunCount = min(input.userPreferences.maxRunsPerWeek, input.historicalData.typicalRunsPerWeek)
-        val availableDays = DayOfWeek.values().toSet() - input.userPreferences.forbiddenRunDays
+        val availableDays = DayOfWeek.entries.toSet() - input.userPreferences.forbiddenRunDays
 
         if (input.historicalData.hasClearWeeklyStructure) {
             val structuredDays = input.historicalData.typicalRunDays.intersect(availableDays)
