@@ -1,8 +1,11 @@
 package kth.nova.overloadalert.domain.repository
 
 import kth.nova.overloadalert.data.RunningRepository
+import kth.nova.overloadalert.domain.model.AcwrRiskLevel
+import kth.nova.overloadalert.domain.model.RiskLevel
 import kth.nova.overloadalert.domain.plan.PlanInput
 import kth.nova.overloadalert.domain.plan.RecentData
+import kth.nova.overloadalert.domain.plan.RiskOverride
 import kth.nova.overloadalert.domain.plan.WeeklyTrainingPlan
 import kth.nova.overloadalert.domain.plan.WeeklyTrainingPlanGenerator
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
@@ -16,10 +19,11 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.time.temporal.ChronoUnit
 
 class PlanRepository(
     analysisRepository: AnalysisRepository,
-    preferencesRepository: PreferencesRepository,
+    private val preferencesRepository: PreferencesRepository,
     runningRepository: RunningRepository,
     historicalDataAnalyzer: HistoricalDataAnalyzer,
     planGenerator: WeeklyTrainingPlanGenerator,
@@ -33,31 +37,76 @@ class PlanRepository(
         runningRepository.getAllRuns()
     ) { analysisData, userPreferences, allRuns ->
 
-        // 1. Define "Today" for planning purposes
         val planningStartDate = LocalDate.now()
-
-        // 2. Filter runs to exclude anything that happened today or in the future.
-        // This gives us a "clean slate" history so the analyzer doesn't subtract today's run from the capacity.
         val runsForPlanning = allRuns.filter {
             OffsetDateTime.parse(it.startDateLocal)
                 .toLocalDate()
                 .isBefore(planningStartDate)
         }
 
-        // 3. Run a SPECIFIC analysis for planning using the clean list.
-        // Because runsForPlanning has no data for 'planningStartDate',
-        // the analyzer will calculate todaysLoad = 0 and return full capacity.
         val prePlanAnalysis = analyzeRunData(runsForPlanning, planningStartDate)
 
-        // 4. Get historical context based on the clean list
         val historicalData = historicalDataAnalyzer(runsForPlanning)
+
+        val today = LocalDate.now()
+        // --- Risk Override Logic ---
+        val currentOverride = userPreferences.riskOverride
+        val isOverrideActive = currentOverride != null &&
+                ChronoUnit.DAYS.between(currentOverride.startDate, today) < 7
+
+        val (acwrMultiplier, longRunMultiplier) = if (isOverrideActive) {
+            // SCENARIO A: Override is active. Enforce persisted restrictions.
+            currentOverride!!.acwrMultiplier to currentOverride.longRunMultiplier
+        } else {
+            // SCENARIO B: No active override. Check fresh analysis for new risks.
+            if (currentOverride != null) {
+                // Override expired (> 7 days). Clear it.
+                preferencesRepository.savePreferences(userPreferences.copy(riskOverride = null))
+            }
+
+            val freshAcwrMultiplier = when (prePlanAnalysis.runAnalysis?.acwrAssessment?.riskLevel) {
+                AcwrRiskLevel.UNDERTRAINING -> 0.9f
+                AcwrRiskLevel.OPTIMAL -> 1.0f
+                AcwrRiskLevel.MODERATE_OVERTRAINING -> 0.85f
+                AcwrRiskLevel.HIGH_OVERTRAINING -> 0.65f
+                null -> 1.0f
+            }
+
+            val freshLongRunMultiplier = when (prePlanAnalysis.runAnalysis?.singleRunRiskAssessment?.riskLevel) {
+                RiskLevel.NONE -> 1.1f
+                RiskLevel.MODERATE -> 1.0f
+                RiskLevel.HIGH -> 0.9f
+                RiskLevel.VERY_HIGH -> 0.75f
+                null -> 1.1f
+            }
+
+            // THE TRIGGER: If risk is elevated, persist the override.
+            if (freshAcwrMultiplier < 1.0f || freshLongRunMultiplier < 1.1f) {
+                val newOverride = RiskOverride(
+                    startDate = today,
+                    acwrMultiplier = freshAcwrMultiplier,
+                    longRunMultiplier = freshLongRunMultiplier
+                )
+                preferencesRepository.savePreferences(userPreferences.copy(riskOverride = newOverride))
+            }
+
+            freshAcwrMultiplier to freshLongRunMultiplier
+        }
+
+        val baseWeeklyVolume = prePlanAnalysis.runAnalysis?.chronicLoad ?: 0f
+        val baseMaxLongRun = prePlanAnalysis.runAnalysis?.safeLongRun ?: 0f
+
+        // Apply the determined multipliers
+        val adjustedWeeklyVolume = baseWeeklyVolume * acwrMultiplier
+        val adjustedMaxLongRun = baseMaxLongRun * longRunMultiplier
+
 
         // 5. Construct RecentData using the "pre-plan" analysis values
         val recentData = RecentData(
-            maxSafeLongRun = prePlanAnalysis.runAnalysis?.maxSafeLongRun ?: 0f,
-            maxWeeklyVolume = prePlanAnalysis.runAnalysis?.maxWeeklyLoad ?: 0f,
+            maxSafeLongRun = adjustedMaxLongRun,
+            baseWeeklyVolume = adjustedWeeklyVolume,
             minDailyVolume = 2000f, // TODO: Make this dynamic
-            restWeekRequired = false // TODO: Implement rest week logic
+            restWeekRequired = (acwrMultiplier < 1.0f || longRunMultiplier < 1.1f)
         )
 
         val planInput = PlanInput(

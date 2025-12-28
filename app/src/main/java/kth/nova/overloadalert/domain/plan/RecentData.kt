@@ -5,7 +5,7 @@ package kth.nova.overloadalert.domain.plan
  */
 data class RecentData(
     val maxSafeLongRun: Float,
-    val maxWeeklyVolume: Float,
+    val baseWeeklyVolume: Float,
     val minDailyVolume: Float,
     val restWeekRequired: Boolean
 )

@@ -69,11 +69,11 @@ class AnalyzeRunData {
         val remainingChronicLoad = chronicLoad * 1.3f - acuteLoad
         val recommendedTodaysRun = max(0f, min(remainingLongestRun, remainingChronicLoad))
         val maxWeeklyLoad = max(0f, chronicLoad * 1.3f - todaysLoad)
-        val maxSafeLongRun = safeLongestRunForDisplay * 1.1f
-        val minRecommendedTodaysRun = min(max(0f, chronicLoad * 0.8f - acuteLoad), maxSafeLongRun * 0.5f)
+        val safeLongRun = safeLongestRunForDisplay * 1.1f
+        val minRecommendedTodaysRun = min(max(0f, chronicLoad * 0.8f - acuteLoad), safeLongRun * 0.5f)
 
 
-        val runAnalysis = RunAnalysis(acuteLoad, chronicLoad, recommendedTodaysRun, maxWeeklyLoad, combinedRisk, maxSafeLongRun, minRecommendedTodaysRun)
+        val runAnalysis = RunAnalysis(acuteLoad, chronicLoad, recommendedTodaysRun, maxWeeklyLoad, combinedRisk, safeLongRun, minRecommendedTodaysRun, acwrAssessment, singleRunRiskAssessment)
 
         // --- Data for GraphsScreen ---
         val longestRunThresholds = (0 until dailyLoads.size).map { i ->

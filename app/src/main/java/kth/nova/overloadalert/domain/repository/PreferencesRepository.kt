@@ -2,12 +2,14 @@ package kth.nova.overloadalert.domain.repository
 
 import android.content.Context
 import kth.nova.overloadalert.domain.plan.ProgressionRate
+import kth.nova.overloadalert.domain.plan.RiskOverride
 import kth.nova.overloadalert.domain.plan.UserPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.time.DayOfWeek
+import java.time.LocalDate
 
 class PreferencesRepository(context: Context) {
 
@@ -30,11 +32,23 @@ class PreferencesRepository(context: Context) {
             ProgressionRate.SLOW
         }
 
+        val overrideStartDateStr = sharedPreferences.getString(KEY_OVERRIDE_START_DATE, null)
+        val riskOverride = if (overrideStartDateStr != null) {
+            RiskOverride(
+                startDate = LocalDate.parse(overrideStartDateStr),
+                acwrMultiplier = sharedPreferences.getFloat(KEY_OVERRIDE_ACWR_MULTIPLIER, 1.0f),
+                longRunMultiplier = sharedPreferences.getFloat(KEY_OVERRIDE_LONGRUN_MULTIPLIER, 1.0f)
+            )
+        } else {
+            null
+        }
+
         return UserPreferences(
             maxRunsPerWeek = maxRuns,
             preferredLongRunDays = preferredDays,
             forbiddenRunDays = forbiddenDays,
-            progressionRate = progressionRate
+            progressionRate = progressionRate,
+            riskOverride = riskOverride
         )
     }
 
@@ -44,6 +58,17 @@ class PreferencesRepository(context: Context) {
             putStringSet(KEY_PREFERRED_LONG_RUN_DAYS, preferences.preferredLongRunDays.map { it.name }.toSet())
             putStringSet(KEY_FORBIDDEN_RUN_DAYS, preferences.forbiddenRunDays.map { it.name }.toSet())
             putString(KEY_PROGRESSION_RATE, preferences.progressionRate.name)
+
+            preferences.riskOverride?.let {
+                putString(KEY_OVERRIDE_START_DATE, it.startDate.toString())
+                putFloat(KEY_OVERRIDE_ACWR_MULTIPLIER, it.acwrMultiplier)
+                putFloat(KEY_OVERRIDE_LONGRUN_MULTIPLIER, it.longRunMultiplier)
+            } ?: run {
+                remove(KEY_OVERRIDE_START_DATE)
+                remove(KEY_OVERRIDE_ACWR_MULTIPLIER)
+                remove(KEY_OVERRIDE_LONGRUN_MULTIPLIER)
+            }
+            
             apply()
         }
         _preferencesFlow.update { preferences }
@@ -54,5 +79,8 @@ class PreferencesRepository(context: Context) {
         private const val KEY_PREFERRED_LONG_RUN_DAYS = "preferred_long_run_days"
         private const val KEY_FORBIDDEN_RUN_DAYS = "forbidden_run_days"
         private const val KEY_PROGRESSION_RATE = "progression_rate"
+        private const val KEY_OVERRIDE_START_DATE = "override_start_date"
+        private const val KEY_OVERRIDE_ACWR_MULTIPLIER = "override_acwr_multiplier"
+        private const val KEY_OVERRIDE_LONGRUN_MULTIPLIER = "override_longrun_multiplier"
     }
 }

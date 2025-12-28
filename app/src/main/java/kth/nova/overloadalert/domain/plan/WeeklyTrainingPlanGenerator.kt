@@ -1,6 +1,5 @@
 package kth.nova.overloadalert.domain.plan
 
-import android.util.Log
 import kth.nova.overloadalert.data.local.Run
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
 import java.time.DayOfWeek
@@ -190,7 +189,8 @@ class WeeklyTrainingPlanGenerator {
     }
 
     private fun calculateWeeklyVolume(input: PlanInput): Float {
-        val baseVolume = input.recentData.maxWeeklyVolume * 10 / 13 // reset to this weeks volume
+        val baseVolume = input.recentData.baseWeeklyVolume
+        if (input.recentData.restWeekRequired) return baseVolume
         // Adjust the base volume based on the user-selected progression rate
         return when (input.userPreferences.progressionRate) {
             ProgressionRate.RETAIN -> baseVolume
@@ -219,7 +219,7 @@ class WeeklyTrainingPlanGenerator {
 
         val moderateDays = runTypes.entries.filter { it.value == RunType.MODERATE }.map { it.key }
         if (moderateDays.isNotEmpty()) {
-            val moderateShare = (longRunShare * 0.65f)
+            val moderateShare = (longRunShare * 0.6f)
             val moderateVolume = max(minDaily, moderateShare)
             moderateDays.forEach {
                 distances[it] = moderateVolume
