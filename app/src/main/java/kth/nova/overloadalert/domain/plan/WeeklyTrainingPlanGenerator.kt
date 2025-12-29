@@ -18,19 +18,21 @@ class WeeklyTrainingPlanGenerator {
 
         var dailyDistances = distributeLoad(runTypes, weeklyVolume, input)
 
-        val (validatedDistances, safeRanges) = validateAndAdjustPlan(dailyDistances.toMutableMap(), allRuns, analyzeRunData)
-        
-        dailyDistances = rebalanceVolume(validatedDistances.toMutableMap(), weeklyVolume, runTypes, safeRanges)
+        if (input.recentData.riskPhase != RiskPhase.DELOAD) {
+            val (validatedDistances, safeRanges) = validateAndAdjustPlan(dailyDistances.toMutableMap(), allRuns, analyzeRunData)
+            dailyDistances = rebalanceVolume(validatedDistances.toMutableMap(), weeklyVolume, runTypes, safeRanges)
+        }
 
         val dailyPlans = DayOfWeek.entries.map {
             DailyPlan(
                 dayOfWeek = it,
                 runType = runTypes[it] ?: RunType.REST,
-                plannedDistance = dailyDistances[it] ?: 0f
+                plannedDistance = dailyDistances[it] ?: 0f,
+                isRestWeek = input.recentData.riskPhase == RiskPhase.DELOAD
             )
         }
 
-        return WeeklyTrainingPlan(days = dailyPlans)
+        return WeeklyTrainingPlan(days = dailyPlans, input.recentData.riskPhase, input.userPreferences.progressionRate)
     }
     
     private fun rebalanceVolume(
@@ -154,12 +156,11 @@ class WeeklyTrainingPlanGenerator {
 
         val longRunDay = findLongRunDay(runDays, input)
         if (longRunDay != null) {
-            runTypes[longRunDay] = if (input.recentData.restWeekRequired) RunType.EASY else RunType.LONG
+            runTypes[longRunDay] = RunType.LONG
         }
 
         val remainingRunDays = runDays - runTypes.keys
         val moderateRunCount = when {
-            input.recentData.restWeekRequired -> 0
             runDays.size >= 5 -> 2
             runDays.size >= 3 -> 1
             else -> 0
@@ -190,7 +191,6 @@ class WeeklyTrainingPlanGenerator {
 
     private fun calculateWeeklyVolume(input: PlanInput): Float {
         val baseVolume = input.recentData.baseWeeklyVolume
-        if (input.recentData.restWeekRequired) return baseVolume
         // Adjust the base volume based on the user-selected progression rate
         return when (input.userPreferences.progressionRate) {
             ProgressionRate.RETAIN -> baseVolume

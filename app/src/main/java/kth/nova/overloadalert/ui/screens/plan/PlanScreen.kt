@@ -36,6 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kth.nova.overloadalert.di.AppComponent
 import kth.nova.overloadalert.domain.plan.DailyPlan
+import kth.nova.overloadalert.domain.plan.ProgressionRate
+import kth.nova.overloadalert.domain.plan.RiskPhase
 import kth.nova.overloadalert.domain.plan.RunType
 import java.time.LocalDate
 
@@ -43,6 +45,9 @@ import java.time.LocalDate
 fun PlanScreen(appComponent: AppComponent) {
     val viewModel: PlanViewModel = viewModel(factory = appComponent.planViewModelFactory)
     val uiState by viewModel.uiState.collectAsState()
+    val plan = uiState.trainingPlan
+    val planTitle = PlanTitle(plan?.riskPhase, plan?.progressionRate)
+
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -60,8 +65,15 @@ fun PlanScreen(appComponent: AppComponent) {
             }
 
             LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                item {
+                    Text(
+                        text = planTitle,
+                        style = MaterialTheme.typography.headlineMedium,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                }
                 items(rotatedDays) { dailyPlan ->
-                    DailyPlanItem(plan = dailyPlan, isToday = dailyPlan.dayOfWeek == today)
+                    DailyPlanItem(plan = dailyPlan, isToday = dailyPlan.dayOfWeek == today, isRestWeek = dailyPlan.isRestWeek)
                     Spacer(modifier = Modifier.padding(4.dp))
                 }
             }
@@ -72,8 +84,18 @@ fun PlanScreen(appComponent: AppComponent) {
 }
 
 @Composable
-fun DailyPlanItem(plan: DailyPlan, isToday: Boolean) {
-    val (icon, color, label) = when (plan.runType) {
+fun DailyPlanItem(plan: DailyPlan, isToday: Boolean, isRestWeek: Boolean) {
+    val displayRunType = if (isRestWeek) {
+        when (plan.runType) {
+            RunType.LONG,
+            RunType.MODERATE -> RunType.EASY
+            else -> plan.runType
+        }
+    } else {
+        plan.runType
+    }
+
+    val (icon, color, label) = when (displayRunType) {
         RunType.LONG -> Triple(Icons.Default.Straight, Color(0xFFE57373), "Long Run")
         RunType.MODERATE -> Triple(Icons.Default.TrendingUp, Color(0xFFFFA726), "Moderate Run")
         RunType.EASY -> Triple(Icons.Default.DirectionsRun, Color(0xFF81C784), "Easy Run")
@@ -114,5 +136,27 @@ fun DailyPlanItem(plan: DailyPlan, isToday: Boolean) {
                 )
             }
         }
+    }
+}
+
+fun ProgressionRate.label(): String = when (this) {
+    ProgressionRate.FAST -> "Fast Building"
+    ProgressionRate.SLOW -> "Slow Building"
+    ProgressionRate.RETAIN -> "Retaining"
+}
+
+fun PlanTitle(riskPhase: RiskPhase?, progressionRate: ProgressionRate?): String {
+    val rateLabel = progressionRate?.label() ?: "Standard"
+
+    return when (riskPhase) {
+        null -> "Optimal $rateLabel Training Plan"
+        RiskPhase.DELOAD -> "Recovery after overtraining"
+        RiskPhase.REBUILDING -> "Rebuilding after detraining"
+        RiskPhase.COOLDOWN ->
+            if (progressionRate == ProgressionRate.FAST)
+                "Building slowly after recovery/rebuilding"
+            else
+                "Optimal $rateLabel Training Plan"
+        RiskPhase.LONG_RUN_LIMITED -> "Optimal $rateLabel Training Plan with limited long run"
     }
 }

@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kth.nova.overloadalert.domain.plan.RiskPhase
 import java.time.DayOfWeek
 import java.time.LocalDate
 
@@ -34,10 +35,20 @@ class PreferencesRepository(context: Context) {
 
         val overrideStartDateStr = sharedPreferences.getString(KEY_OVERRIDE_START_DATE, null)
         val riskOverride = if (overrideStartDateStr != null) {
+            val phaseStr = sharedPreferences.getString(KEY_OVERRIDE_PHASE, null)
+            val phase = phaseStr?.let {
+                try {
+                    RiskPhase.valueOf(it)
+                } catch (e: IllegalArgumentException) {
+                    null
+                }
+            }
+
             RiskOverride(
                 startDate = LocalDate.parse(overrideStartDateStr),
                 acwrMultiplier = sharedPreferences.getFloat(KEY_OVERRIDE_ACWR_MULTIPLIER, 1.0f),
-                longRunMultiplier = sharedPreferences.getFloat(KEY_OVERRIDE_LONGRUN_MULTIPLIER, 1.0f)
+                longRunMultiplier = sharedPreferences.getFloat(KEY_OVERRIDE_LONGRUN_MULTIPLIER, 1.1f),
+                phase = phase
             )
         } else {
             null
@@ -63,10 +74,14 @@ class PreferencesRepository(context: Context) {
                 putString(KEY_OVERRIDE_START_DATE, it.startDate.toString())
                 putFloat(KEY_OVERRIDE_ACWR_MULTIPLIER, it.acwrMultiplier)
                 putFloat(KEY_OVERRIDE_LONGRUN_MULTIPLIER, it.longRunMultiplier)
+                it.phase?.let { phase ->
+                    putString(KEY_OVERRIDE_PHASE, phase.name)
+                } ?: remove(KEY_OVERRIDE_PHASE)
             } ?: run {
                 remove(KEY_OVERRIDE_START_DATE)
                 remove(KEY_OVERRIDE_ACWR_MULTIPLIER)
                 remove(KEY_OVERRIDE_LONGRUN_MULTIPLIER)
+                remove(KEY_OVERRIDE_PHASE)
             }
             
             apply()
@@ -82,5 +97,6 @@ class PreferencesRepository(context: Context) {
         private const val KEY_OVERRIDE_START_DATE = "override_start_date"
         private const val KEY_OVERRIDE_ACWR_MULTIPLIER = "override_acwr_multiplier"
         private const val KEY_OVERRIDE_LONGRUN_MULTIPLIER = "override_longrun_multiplier"
+        private const val KEY_OVERRIDE_PHASE = "override_phase"
     }
 }

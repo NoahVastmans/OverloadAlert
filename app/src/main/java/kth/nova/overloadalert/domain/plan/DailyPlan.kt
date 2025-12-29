@@ -8,5 +8,6 @@ import java.time.DayOfWeek
 data class DailyPlan(
     val dayOfWeek: DayOfWeek,
     val runType: RunType,
-    val plannedDistance: Float = 0f // in meters
+    val plannedDistance: Float = 0f, // in meters
+    val isRestWeek: Boolean = false
 )

@@ -3,11 +3,7 @@ package kth.nova.overloadalert.domain.repository
 import kth.nova.overloadalert.data.RunningRepository
 import kth.nova.overloadalert.domain.model.AcwrRiskLevel
 import kth.nova.overloadalert.domain.model.RiskLevel
-import kth.nova.overloadalert.domain.plan.PlanInput
-import kth.nova.overloadalert.domain.plan.RecentData
-import kth.nova.overloadalert.domain.plan.RiskOverride
-import kth.nova.overloadalert.domain.plan.WeeklyTrainingPlan
-import kth.nova.overloadalert.domain.plan.WeeklyTrainingPlanGenerator
+import kth.nova.overloadalert.domain.plan.*
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
 import kth.nova.overloadalert.domain.usecases.HistoricalDataAnalyzer
 import kotlinx.coroutines.CoroutineScope
@@ -49,30 +45,17 @@ class PlanRepository(
         val historicalData = historicalDataAnalyzer(runsForPlanning)
 
         val today = LocalDate.now()
-        // --- Risk Override Logic ---
-        val currentOverride = userPreferences.riskOverride
-        val isOverrideActive = currentOverride != null &&
-                ChronoUnit.DAYS.between(currentOverride.startDate, today) < 7
 
-        val (acwrMultiplier, longRunMultiplier) = if (isOverrideActive) {
-            // SCENARIO A: Override is active. Enforce persisted restrictions.
-            currentOverride!!.acwrMultiplier to currentOverride.longRunMultiplier
-        } else {
-            // SCENARIO B: No active override. Check fresh analysis for new risks.
-            if (currentOverride != null) {
-                // Override expired (> 7 days). Clear it.
-                preferencesRepository.savePreferences(userPreferences.copy(riskOverride = null))
-            }
+        val freshAcwrMultiplier = when (prePlanAnalysis.runAnalysis?.acwrAssessment?.riskLevel) {
+            AcwrRiskLevel.UNDERTRAINING -> 0.9f
+            AcwrRiskLevel.OPTIMAL -> 1.0f
+            AcwrRiskLevel.MODERATE_OVERTRAINING -> 0.85f
+            AcwrRiskLevel.HIGH_OVERTRAINING -> 0.65f
+            null -> 1.0f
+        }
 
-            val freshAcwrMultiplier = when (prePlanAnalysis.runAnalysis?.acwrAssessment?.riskLevel) {
-                AcwrRiskLevel.UNDERTRAINING -> 0.9f
-                AcwrRiskLevel.OPTIMAL -> 1.0f
-                AcwrRiskLevel.MODERATE_OVERTRAINING -> 0.85f
-                AcwrRiskLevel.HIGH_OVERTRAINING -> 0.65f
-                null -> 1.0f
-            }
-
-            val freshLongRunMultiplier = when (prePlanAnalysis.runAnalysis?.singleRunRiskAssessment?.riskLevel) {
+        val freshLongRunMultiplier =
+            when (prePlanAnalysis.runAnalysis?.singleRunRiskAssessment?.riskLevel) {
                 RiskLevel.NONE -> 1.1f
                 RiskLevel.MODERATE -> 1.0f
                 RiskLevel.HIGH -> 0.9f
@@ -80,17 +63,86 @@ class PlanRepository(
                 null -> 1.1f
             }
 
-            // THE TRIGGER: If risk is elevated, persist the override.
-            if (freshAcwrMultiplier < 1.0f || freshLongRunMultiplier < 1.1f) {
-                val newOverride = RiskOverride(
+        val freshAcwrRiskDetected = freshAcwrMultiplier < 1.0f
+        val freshLongRunRiskDetected =  freshLongRunMultiplier < 1.1f
+
+
+        val override = userPreferences.riskOverride
+        val daysSinceOverride = override?.let { ChronoUnit.DAYS.between(it.startDate, today) }
+
+        val nextOverride = when {
+            override == null && freshAcwrRiskDetected ->
+                RiskOverride(
                     startDate = today,
+                    phase = if (freshAcwrMultiplier < 0.9f) RiskPhase.DELOAD else RiskPhase.REBUILDING,
                     acwrMultiplier = freshAcwrMultiplier,
                     longRunMultiplier = freshLongRunMultiplier
                 )
-                preferencesRepository.savePreferences(userPreferences.copy(riskOverride = newOverride))
+
+            override == null && freshLongRunRiskDetected ->
+                RiskOverride(
+                    startDate = today,
+                    phase = RiskPhase.LONG_RUN_LIMITED,
+                    acwrMultiplier = freshAcwrMultiplier,
+                    longRunMultiplier = freshLongRunMultiplier
+                )
+
+            override?.phase == RiskPhase.DELOAD && freshAcwrMultiplier >= 0.9f ->
+                override.copy(
+                    startDate = today,
+                    phase = if (freshAcwrMultiplier > 0.9f) RiskPhase.COOLDOWN else RiskPhase.REBUILDING,
+                    acwrMultiplier = freshAcwrMultiplier
+                )
+
+            override?.phase == RiskPhase.REBUILDING && freshAcwrMultiplier > 0.9f ->
+                override.copy(
+                    startDate = today,
+                    phase = RiskPhase.COOLDOWN,
+                    acwrMultiplier = freshAcwrMultiplier
+                )
+
+            override?.phase == RiskPhase.COOLDOWN && freshAcwrRiskDetected ->
+                RiskOverride(
+                    startDate = today,
+                    phase = if (freshAcwrMultiplier < 0.9f) RiskPhase.DELOAD else RiskPhase.REBUILDING,
+                    acwrMultiplier = freshAcwrMultiplier,
+                    longRunMultiplier = freshLongRunMultiplier
+                )
+
+            override?.phase == RiskPhase.COOLDOWN && daysSinceOverride!! >= 7 ->
+                null
+
+            override?.phase == RiskPhase.LONG_RUN_LIMITED && daysSinceOverride!! >= 7 ->
+                null
+
+            else -> override
+        }
+
+        if (nextOverride != override) {
+            preferencesRepository.savePreferences(
+                userPreferences.copy(riskOverride = nextOverride)
+            )
+        }
+
+        var acwrMultiplier = 1.0f
+        var longRunMultiplier = 1.1f
+        var effectiveProgressionRate = userPreferences.progressionRate
+
+        when (nextOverride?.phase) {
+            RiskPhase.DELOAD, RiskPhase.REBUILDING -> {
+                acwrMultiplier = nextOverride.acwrMultiplier
+                longRunMultiplier = nextOverride.longRunMultiplier
+                effectiveProgressionRate = ProgressionRate.RETAIN
             }
 
-            freshAcwrMultiplier to freshLongRunMultiplier
+            RiskPhase.COOLDOWN, RiskPhase.LONG_RUN_LIMITED -> {
+                longRunMultiplier = nextOverride.longRunMultiplier
+                if (userPreferences.progressionRate == ProgressionRate.FAST) {
+                    effectiveProgressionRate = ProgressionRate.SLOW
+                }
+            }
+
+            null -> Unit
         }
 
         val baseWeeklyVolume = prePlanAnalysis.runAnalysis?.chronicLoad ?: 0f
@@ -106,11 +158,11 @@ class PlanRepository(
             maxSafeLongRun = adjustedMaxLongRun,
             baseWeeklyVolume = adjustedWeeklyVolume,
             minDailyVolume = adjustedWeeklyVolume/10f,
-            restWeekRequired = (acwrMultiplier < 1.0f || longRunMultiplier < 1.1f)
+            riskPhase = override?.phase
         )
 
         val planInput = PlanInput(
-            userPreferences = userPreferences,
+            userPreferences = userPreferences.copy(progressionRate = effectiveProgressionRate),
             historicalData = historicalData,
             recentData = recentData
         )

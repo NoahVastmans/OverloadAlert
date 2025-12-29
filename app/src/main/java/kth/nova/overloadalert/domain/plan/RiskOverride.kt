@@ -7,6 +7,7 @@ import java.time.LocalDate
  */
 data class RiskOverride(
     val startDate: LocalDate,
+    val phase: RiskPhase? = null,
     val acwrMultiplier: Float,
     val longRunMultiplier: Float
 )
