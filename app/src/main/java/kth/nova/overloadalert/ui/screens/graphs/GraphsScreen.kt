@@ -2,16 +2,12 @@ package kth.nova.overloadalert.ui.screens.graphs
 
 import android.graphics.Color
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -40,6 +36,10 @@ fun GraphsScreen(appComponent: AppComponent) {
     val uiState by viewModel.uiState.collectAsState()
     val graphData = uiState.graphData
 
+    // State for showing info dialogs
+    var showTopChartInfo by remember { mutableStateOf(false) }
+    var showBottomChartInfo by remember { mutableStateOf(false) }
+
     Column(modifier = Modifier.fillMaxSize()) {
         // Top Chart
         Box(
@@ -59,11 +59,23 @@ fun GraphsScreen(appComponent: AppComponent) {
                     modifier = Modifier.fillMaxSize().padding(top = 8.dp, start = 4.dp, end = 4.dp, bottom = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = "Daily Distance vs. Longest Run Threshold",
-                        fontWeight = FontWeight.Bold,
-                        color = androidx.compose.ui.graphics.Color.Black
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Daily Distance vs. Longest Run Threshold",
+                            fontWeight = FontWeight.Bold,
+                            color = androidx.compose.ui.graphics.Color.Black
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(onClick = { showTopChartInfo = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Info",
+                                tint = androidx.compose.ui.graphics.Color.Gray
+                            )
+                        }
+                    }
                     AndroidView(
                         modifier = Modifier.fillMaxSize(),
                         factory = { context ->
@@ -137,11 +149,23 @@ fun GraphsScreen(appComponent: AppComponent) {
                     modifier = Modifier.fillMaxSize().padding(top = 8.dp, start = 4.dp, end = 4.dp, bottom = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = "Acute vs. Chronic Workload",
-                        fontWeight = FontWeight.Bold,
-                        color = androidx.compose.ui.graphics.Color.Black
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Acute vs. Chronic Workload",
+                            fontWeight = FontWeight.Bold,
+                            color = androidx.compose.ui.graphics.Color.Black
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(onClick = { showBottomChartInfo = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Info",
+                                tint = androidx.compose.ui.graphics.Color.Gray
+                            )
+                        }
+                    }
                     AndroidView(
                         modifier = Modifier.fillMaxSize(),
                         factory = { context ->
@@ -188,6 +212,33 @@ fun GraphsScreen(appComponent: AppComponent) {
             }
         }
     }
+    // Top chart info dialog
+    if (showTopChartInfo) {
+        AlertDialog(
+            onDismissRequest = { showTopChartInfo = false },
+            confirmButton = {
+                TextButton(onClick = { showTopChartInfo = false }) {
+                    Text("OK")
+                }
+            },
+            title = { Text("Top Chart Info") },
+            text = { Text("This chart shows daily distance vs. the longest run threshold. Bars represent daily load, and the colored zones show risk levels.") }
+        )
+    }
+
+    // Bottom chart info dialog
+    if (showBottomChartInfo) {
+        AlertDialog(
+            onDismissRequest = { showBottomChartInfo = false },
+            confirmButton = {
+                TextButton(onClick = { showBottomChartInfo = false }) {
+                    Text("OK")
+                }
+            },
+            title = { Text("Bottom Chart Info") },
+            text = { Text("This chart shows the acute vs chronic workload ratio (ACWR). Colored zones indicate different workload risk levels.") }
+        )
+    }
 }
 
 // --- Helper for Top Chart ---
@@ -229,7 +280,7 @@ private fun createLongestRunChartData(baseThresholdEntries: List<Entry>, barWidt
     val moderateFill = createFillDataSet(extendedBaseEntries, "Moderate Risk", moderateColor, false)
     val highFill = createFillDataSet(moderateRiskEntries, "High Risk", highColor, false)
     val veryHighFill = createFillDataSet(highRiskEntries, "Very High Risk", veryHighColor, false)
-    
+
     return LineData(listOf(safeFill, moderateFill, highFill, veryHighFill))
 }
 
@@ -247,7 +298,7 @@ private fun createAcwrChartData(acuteLoadEntries: List<Entry>, chronicLoadEntrie
     val redColor = Color.rgb(255, 205, 210)    // High Overtraining
 
     val detrainingFill = createFillDataSet(detrainingLine, "De-training/Recovery", blueColor, true)
-    val optimalFill = createFillDataSet(detrainingLine, "Optimal", greenColor, false) 
+    val optimalFill = createFillDataSet(detrainingLine, "Optimal", greenColor, false)
     val overtrainingFill = createFillDataSet(overtrainingLine, "Moderate Overtraining", yellowColor, false)
     val highOvertrainingFill = createFillDataSet(highOvertrainingLine, "High Overtraining", redColor, false)
 
@@ -263,7 +314,7 @@ private fun createAcwrChartData(acuteLoadEntries: List<Entry>, chronicLoadEntrie
     return LineData(listOf(detrainingFill, optimalFill, overtrainingFill, highOvertrainingFill, acuteLoadLine))
 }
 
-// --- Common Helper --- 
+// --- Common Helper ---
 private fun createFillDataSet(entries: List<Entry>, label: String, color: Int, fillDown: Boolean): LineDataSet {
     return LineDataSet(entries, label).apply {
         setDrawFilled(true)

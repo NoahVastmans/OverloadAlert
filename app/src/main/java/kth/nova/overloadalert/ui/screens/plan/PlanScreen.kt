@@ -16,17 +16,24 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Hotel
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Straight
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +52,8 @@ import java.time.LocalDate
 fun PlanScreen(appComponent: AppComponent) {
     val viewModel: PlanViewModel = viewModel(factory = appComponent.planViewModelFactory)
     val uiState by viewModel.uiState.collectAsState()
+    var showInfoDialog by remember { mutableStateOf(false) }
+
     val plan = uiState.trainingPlan
     val planTitle = PlanTitle(plan?.riskPhase, plan?.progressionRate)
 
@@ -53,33 +62,81 @@ fun PlanScreen(appComponent: AppComponent) {
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        if (uiState.isLoading) {
-            CircularProgressIndicator()
-        } else if (uiState.trainingPlan != null) {
-            val today = LocalDate.now().dayOfWeek
-            val todayIndex = uiState.trainingPlan!!.days.indexOfFirst { it.dayOfWeek == today }
-            val rotatedDays = if (todayIndex != -1) {
-                uiState.trainingPlan!!.days.subList(todayIndex, uiState.trainingPlan!!.days.size) + uiState.trainingPlan!!.days.subList(0, todayIndex)
-            } else {
-                uiState.trainingPlan!!.days
+        when {
+            uiState.isLoading -> {
+                CircularProgressIndicator()
             }
 
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                item {
-                    Text(
-                        text = planTitle,
-                        style = MaterialTheme.typography.headlineMedium,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
+            uiState.trainingPlan != null -> {
+                val today = LocalDate.now().dayOfWeek
+                val todayIndex = plan!!.days.indexOfFirst { it.dayOfWeek == today }
+                val rotatedDays =
+                    if (todayIndex != -1) {
+                        plan.days.subList(todayIndex, plan.days.size) +
+                                plan.days.subList(0, todayIndex)
+                    } else {
+                        plan.days
+                    }
+
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = planTitle,
+                            style = MaterialTheme.typography.headlineMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        IconButton(onClick = { showInfoDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Plan Info",
+                                tint = Color.Gray
+                            )
+                        }
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp)
+                    ) {
+                        items(rotatedDays) { dailyPlan ->
+                            DailyPlanItem(
+                                plan = dailyPlan,
+                                isToday = dailyPlan.dayOfWeek == today,
+                                isRestWeek = dailyPlan.isRestWeek
+                            )
+                            Spacer(modifier = Modifier.padding(4.dp))
+                        }
+                    }
                 }
-                items(rotatedDays) { dailyPlan ->
-                    DailyPlanItem(plan = dailyPlan, isToday = dailyPlan.dayOfWeek == today, isRestWeek = dailyPlan.isRestWeek)
-                    Spacer(modifier = Modifier.padding(4.dp))
-                }
+            } else -> {
+                Text("Not enough data to generate a plan.")
             }
-        } else {
-            Text("Not enough data to generate a plan.")
         }
+    }
+    if (showInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showInfoDialog = false },
+            confirmButton = {
+                TextButton(onClick = { showInfoDialog = false }) {
+                    Text("OK")
+                }
+            },
+            title = { Text("Training Plan Info") },
+            text = {
+                Text(
+                    "This screen shows your personalized training plan. "
+                            + "Days are ordered starting from today. "
+                            + "The plan adapts based on your recent training load and recovery."
+                )
+            }
+        )
     }
 }
 

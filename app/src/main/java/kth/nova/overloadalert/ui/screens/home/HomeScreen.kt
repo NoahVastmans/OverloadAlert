@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -22,6 +24,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +49,7 @@ fun HomeScreen(viewModel: HomeViewModel, onNavigateToPreferences: () -> Unit) {
     val snackbarHostState = remember { SnackbarHostState() }
 
     var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    var showInfoDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -92,6 +96,9 @@ fun HomeScreen(viewModel: HomeViewModel, onNavigateToPreferences: () -> Unit) {
                     IconButton(onClick = { viewModel.refreshData() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh Data")
                     }
+                    IconButton(onClick = { showInfoDialog = true }) { // <-- Info button
+                        Icon(Icons.Default.Info, contentDescription = "Info")
+                    }
                 }
             )
         }
@@ -111,6 +118,18 @@ fun HomeScreen(viewModel: HomeViewModel, onNavigateToPreferences: () -> Unit) {
                 Text("No data available. Please sync with Strava.")
             }
         }
+    }
+    if (showInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showInfoDialog = false },
+            confirmButton = {
+                TextButton(onClick = { showInfoDialog = false }) {
+                    Text("OK")
+                }
+            },
+            title = { Text("Home Screen Info") },
+            text = { Text("This screen shows your latest overload analysis. Use the refresh button to update data and settings to configure your preferences.") }
+        )
     }
 }
 

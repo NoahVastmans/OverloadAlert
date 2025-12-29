@@ -6,14 +6,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -22,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -33,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -46,47 +52,98 @@ import kotlin.math.roundToInt
 fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {
     val viewModel: PreferencesViewModel = viewModel(factory = appComponent.preferencesViewModelFactory)
     val uiState by viewModel.uiState.collectAsState()
-    var showDialog by remember { mutableStateOf(false) }
+    var showDiscardDialog by remember { mutableStateOf(false) }
+    var infoDialogText by remember { mutableStateOf<String?>(null) }
 
     BackHandler(enabled = true) {
-        showDialog = true
+        showDiscardDialog = true
     }
 
-    if (showDialog) {
+    if (showDiscardDialog) {
         AlertDialog(
-            onDismissRequest = { showDialog = false },
+            onDismissRequest = { showDiscardDialog = false },
             title = { Text("Discard Changes?") },
             text = { Text("Are you sure you want to go back? Any unsaved changes will be lost.") },
             confirmButton = {
                 TextButton(onClick = {
-                    showDialog = false
+                    showDiscardDialog = false
                     onNavigateBack()
                 }) {
                     Text("Discard")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDialog = false }) {
+                TextButton(onClick = { showDiscardDialog = false }) {
                     Text("Cancel")
                 }
             }
         )
     }
 
+    infoDialogText?.let { text ->
+        AlertDialog(
+            onDismissRequest = { infoDialogText = null },
+            confirmButton = {
+                TextButton(onClick = { infoDialogText = null }) {
+                    Text("OK")
+                }
+            },
+            title = { Text("Preference Info") },
+            text = { Text(text) }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Training Preferences") },
-                actions = {
-                    IconButton(onClick = { 
-                        viewModel.savePreferences(uiState.preferences, onNavigateBack)
-                    }) {
-                        Icon(Icons.Default.Check, contentDescription = "Save Preferences")
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Training Preferences",
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = {
+                                infoDialogText =
+                                    "These preferences control how your training plan is generated. " +
+                                            "They influence weekly volume, progression speed, and rest days."
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Preferences Info",
+                                tint = Color.Gray
+                            )
+                        }
                     }
                 }
             )
+        },
+        bottomBar = {
+            // ---------- SAVE BUTTON ----------
+            Surface(shadowElevation = 8.dp) {
+                Button(
+                    onClick = {
+                        viewModel.savePreferences(
+                            uiState.preferences,
+                            onNavigateBack
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .height(52.dp)
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Save Preferences",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+            }
         }
-    ) {
+    ) {paddingValues ->
         if (uiState.isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -95,55 +152,98 @@ fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(it)
+                    .padding(paddingValues)
                     .padding(16.dp)
             ) {
-                PreferenceItem("Maximum Runs Per Week: ${uiState.preferences.maxRunsPerWeek}") {
-                    Slider(
-                        value = uiState.preferences.maxRunsPerWeek.toFloat(),
-                        onValueChange = { newValue ->
-                            viewModel.onPreferencesChanged(
-                                uiState.preferences.copy(maxRunsPerWeek = newValue.roundToInt())
-                            )
-                        },
-                        valueRange = 1f..7f,
-                        steps = 5
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                PreferenceItem("Progression Rate") {
-                    ProgressionRateSelector(uiState.preferences.progressionRate) {
-                        viewModel.onPreferencesChanged(uiState.preferences.copy(progressionRate = it))
+                PreferenceHeader(
+                    title = "Maximum Runs Per Week: ${uiState.preferences.maxRunsPerWeek}",
+                    onInfoClick = {
+                        infoDialogText =
+                            "Limits how many runs you perform per week. " +
+                                    "This helps control fatigue and injury risk."
                     }
-                }
+                )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Slider(
+                    value = uiState.preferences.maxRunsPerWeek.toFloat(),
+                    onValueChange = {
+                        viewModel.onPreferencesChanged(
+                            uiState.preferences.copy(
+                                maxRunsPerWeek = it.roundToInt()
+                            )
+                        )
+                    },
+                    valueRange = 1f..7f,
+                    steps = 5
+                )
 
-                PreferenceItem("Preferred Long Run Days") {
-                    DayOfWeekSelector(
-                        selectedDays = uiState.preferences.preferredLongRunDays,
-                        onDayClick = { day ->
-                            val newDays = uiState.preferences.preferredLongRunDays.toMutableSet()
-                            if (newDays.contains(day)) newDays.remove(day) else newDays.add(day)
-                            viewModel.onPreferencesChanged(uiState.preferences.copy(preferredLongRunDays = newDays))
-                        }
+                Spacer(Modifier.height(24.dp))
+
+                PreferenceHeader(
+                    title = "Progression Rate",
+                    onInfoClick = {
+                        infoDialogText =
+                            "Controls how quickly training volume increases over time. " +
+                                    "Slower progression reduces injury risk."
+                    }
+                )
+
+                ProgressionRateSelector(uiState.preferences.progressionRate) {
+                    viewModel.onPreferencesChanged(
+                        uiState.preferences.copy(progressionRate = it)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(Modifier.height(24.dp))
 
-                PreferenceItem("Forbidden Run Days") {
-                    DayOfWeekSelector(
-                        selectedDays = uiState.preferences.forbiddenRunDays,
-                        onDayClick = { day ->
-                            val newDays = uiState.preferences.forbiddenRunDays.toMutableSet()
-                            if (newDays.contains(day)) newDays.remove(day) else newDays.add(day)
-                            viewModel.onPreferencesChanged(uiState.preferences.copy(forbiddenRunDays = newDays))
-                        }
-                    )
-                }
+                PreferenceHeader(
+                    title = "Preferred Long Run Days",
+                    onInfoClick = {
+                        infoDialogText =
+                            "Select days where long runs are preferred. " +
+                                    "The plan will try to schedule long runs on these days."
+                    }
+                )
+
+                DayOfWeekSelector(
+                    selectedDays = uiState.preferences.preferredLongRunDays,
+                    onDayClick = { day ->
+                        val newDays =
+                            uiState.preferences.preferredLongRunDays.toMutableSet()
+                        if (day in newDays) newDays.remove(day) else newDays.add(day)
+                        viewModel.onPreferencesChanged(
+                            uiState.preferences.copy(
+                                preferredLongRunDays = newDays
+                            )
+                        )
+                    }
+                )
+
+                Spacer(Modifier.height(24.dp))
+
+                PreferenceHeader(
+                    title = "Forbidden Run Days",
+                    onInfoClick = {
+                        infoDialogText =
+                            "Runs will never be scheduled on these days. " +
+                                    "Useful for work, rest, or recovery days."
+                    }
+                )
+
+                DayOfWeekSelector(
+                    selectedDays = uiState.preferences.forbiddenRunDays,
+                    onDayClick = { day ->
+                        val newDays =
+                            uiState.preferences.forbiddenRunDays.toMutableSet()
+                        if (day in newDays) newDays.remove(day) else newDays.add(day)
+                        viewModel.onPreferencesChanged(
+                            uiState.preferences.copy(
+                                forbiddenRunDays = newDays
+                            )
+                        )
+                    }
+                )
+                Spacer(Modifier.height(80.dp))
             }
         }
     }
@@ -194,6 +294,29 @@ private fun DayOfWeekSelector(selectedDays: Set<DayOfWeek>, onDayClick: (DayOfWe
                 } else {
                     null
                 }
+            )
+        }
+    }
+}
+
+@Composable
+fun PreferenceHeader(
+    title: String,
+    onInfoClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium
+        )
+        IconButton(onClick = onInfoClick) {
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = "Info",
+                tint = Color.Gray
             )
         }
     }
