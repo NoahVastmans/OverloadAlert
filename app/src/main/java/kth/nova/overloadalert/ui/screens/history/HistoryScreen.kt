@@ -1,6 +1,7 @@
 package kth.nova.overloadalert.ui.screens.history
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,7 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButtonDefaults.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,7 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kth.nova.overloadalert.domain.model.AnalyzedRun
-import kth.nova.overloadalert.domain.model.RiskLevel
+import kth.nova.overloadalert.domain.model.CombinedRisk
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 
@@ -45,6 +45,7 @@ import java.time.format.DateTimeFormatter
 fun HistoryScreen(viewModel: HistoryViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     var showInfoDialog by remember { mutableStateOf(false) }
+    var showRiskDialog by remember { mutableStateOf<CombinedRisk?>(null) }
 
     Scaffold { paddingValues ->
         Column(
@@ -98,7 +99,10 @@ fun HistoryScreen(viewModel: HistoryViewModel) {
                 else -> {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(uiState.analyzedRuns) { analyzedRun ->
-                            RunHistoryItem(analyzedRun = analyzedRun)
+                            RunHistoryItem(
+                                analyzedRun = analyzedRun,
+                                onRiskClick = { showRiskDialog = it }
+                            )
                             HorizontalDivider()
                         }
                     }
@@ -115,15 +119,27 @@ fun HistoryScreen(viewModel: HistoryViewModel) {
                 }
             },
             title = { Text("Run History Info") },
-            text = { Text("This screen shows your past analyzed runs. Scroll down to view all historical runs.") }
+            text = { Text("This screen shows your past analyzed runs, with the combined risk assessment based on your fitness at that point in time.") }
+        )
+    }
+    showRiskDialog?.let { risk ->
+        AlertDialog(
+            onDismissRequest = { showRiskDialog = null },
+            title = { Text(risk.title) },
+            text = { Text(risk.message) },
+            confirmButton = {
+                TextButton(onClick = { showRiskDialog = null }) {
+                    Text("OK")
+                }
+            }
         )
     }
 }
 
 @Composable
-fun RunHistoryItem(analyzedRun: AnalyzedRun) {
+fun RunHistoryItem(analyzedRun: AnalyzedRun, onRiskClick: (CombinedRisk) -> Unit) {
     val run = analyzedRun.run
-    val riskLevel = analyzedRun.singleRunRiskAssessment.riskLevel
+    val risk = analyzedRun.risk
 
     val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy")
     val runDate = OffsetDateTime.parse(run.startDateLocal).format(dateFormatter)
@@ -137,7 +153,7 @@ fun RunHistoryItem(analyzedRun: AnalyzedRun) {
         // Date and Risk Tag
         Column(horizontalAlignment = Alignment.Start, modifier = Modifier.weight(1f)) {
             Text(text = runDate, fontSize = 16.sp)
-            RiskTag(riskLevel = riskLevel)
+            RiskTag(risk = risk, onClick = { onRiskClick(risk) })
         }
 
         Spacer(Modifier.width(16.dp))
@@ -160,25 +176,17 @@ fun RunHistoryItem(analyzedRun: AnalyzedRun) {
 }
 
 @Composable
-fun RiskTag(riskLevel: RiskLevel) {
-    val tagColor = when (riskLevel) {
-        RiskLevel.NONE -> Color(0xFF2E7D32) // Dark Green
-        RiskLevel.MODERATE -> Color(0xFFF9A825) // Amber
-        RiskLevel.HIGH -> Color(0xFFEF6C00)     // Orange
-        RiskLevel.VERY_HIGH -> Color(0xFFC62828) // Red
-    }
-
-    val text = if (riskLevel == RiskLevel.NONE) "NO RISK" else riskLevel.name.replace("_", " ")
-
+fun RiskTag(risk: CombinedRisk, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .padding(top = 4.dp)
             .clip(RoundedCornerShape(4.dp))
-            .background(tagColor)
+            .background(risk.color)
+            .clickable(onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
         Text(
-            text = text,
+            text = risk.title.uppercase(),
             color = Color.White,
             fontSize = 10.sp
         )

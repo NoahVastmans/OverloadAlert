@@ -30,19 +30,32 @@ class AnalyzeRunData {
         val cappedAcuteLoadSeries = calculateRollingSum(cappedDailyLoads, 7)
         val chronicLoadSeries = calculateEwma(cappedAcuteLoadSeries, 28)
 
+        // --- ACWR time series (single source of truth) ---
+        val acwrByDate = mutableMapOf<LocalDate, AcwrAssessment>()
+
+        dailyLoads.indices.forEach { i ->
+            val date = startDate.plusDays(i.toLong())
+            val acute = acuteLoadSeries[i]
+            val chronic = chronicLoadSeries.getOrNull(i) ?: 0f
+
+            if (chronic > 0f) {
+                val ratio = acute / chronic
+                val risk = when {
+                    ratio > 2.0f -> AcwrRiskLevel.HIGH_OVERTRAINING
+                    ratio > 1.3f -> AcwrRiskLevel.MODERATE_OVERTRAINING
+                    ratio > 0.8f -> AcwrRiskLevel.OPTIMAL
+                    else -> AcwrRiskLevel.UNDERTRAINING
+                }
+
+                acwrByDate[date] = AcwrAssessment(risk, ratio, "")
+            }
+        }
+
         // --- Data for HomeScreen ---
         val acuteLoad = acuteLoadSeries.lastOrNull() ?: 0f
         val chronicLoad = chronicLoadSeries.lastOrNull() ?: 0f
+        val acwrAssessment = acwrByDate[today]
 
-        val acwrAssessment = if (chronicLoad > 0) {
-            val ratio = acuteLoad / chronicLoad
-            when {
-                ratio > 2.0f -> AcwrAssessment(AcwrRiskLevel.HIGH_OVERTRAINING, ratio, "")
-                ratio > 1.3f -> AcwrAssessment(AcwrRiskLevel.MODERATE_OVERTRAINING, ratio, "")
-                ratio > 0.8f -> AcwrAssessment(AcwrRiskLevel.OPTIMAL, ratio, "")
-                else -> AcwrAssessment(AcwrRiskLevel.UNDERTRAINING, ratio, "")
-            }
-        } else null
 
         val mergedRuns = mergeRuns(runs)
         val mostRecentRun = mergedRuns.last()
@@ -94,7 +107,26 @@ class AnalyzeRunData {
         val chronicLoadLine = chronicLoadSeries.takeLast(30).mapIndexed { index, value -> Entry(index.toFloat(), value) }
 
         val graphData = GraphData(dailyLoadBars, longestRunThresholdLine, finalDateLabels, acuteLoadLine, chronicLoadLine)
-        return UiAnalysisData(runAnalysis, graphData)
+
+        // --- Data for Historyscreen ---
+        val combinedRiskByDate = mutableMapOf<LocalDate, CombinedRisk>()
+        val baselineByDate = mutableMapOf<LocalDate, Float>()
+
+        smoothedLongestRunThresholds.forEachIndexed { index, value ->
+            val date = startDate.plusDays(index.toLong())
+            baselineByDate[date] = value
+        }
+
+        mergedRuns.forEachIndexed { index, run ->
+            val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
+            val acwrAssessment = acwrByDate[runDate]
+            val baseline = baselineByDate[runDate] ?: 0f
+            val singleRunRiskAssessment = calculateRisk(run.distance, baseline)
+            val combinedRisk = generateCombinedRisk(singleRunRiskAssessment, acwrAssessment)
+            combinedRiskByDate[runDate] = combinedRisk
+
+        }
+        return UiAnalysisData(runAnalysis, graphData, combinedRiskByDate)
     }
 
     private fun generateCombinedRisk(runRisk: SingleRunRiskAssessment, acwr: AcwrAssessment?): CombinedRisk {
@@ -183,26 +215,6 @@ class AnalyzeRunData {
         return ewma
     }
 
-    fun analyzeFullHistory(allRuns: List<Run>): List<AnalyzedRun> {
-        val mergedRuns = mergeRuns(allRuns).reversed()
-        if (mergedRuns.isEmpty()) return emptyList()
-
-        return mergedRuns.mapIndexed { index, run ->
-            val allPrecedingRuns = mergedRuns.subList(index + 1, mergedRuns.size)
-            val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
-            val thirtyDaysBefore = runDate.minusDays(30)
-
-            val relevantPrecedingRuns = allPrecedingRuns.filter {
-                OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(thirtyDaysBefore)
-            }
-
-            val baseline = getStableLongestRun(relevantPrecedingRuns)
-            val risk = calculateRisk(run.distance, baseline)
-            
-            AnalyzedRun(run, risk)
-        }
-    }
-
     private fun calculateRisk(distance: Float, baseline: Float): SingleRunRiskAssessment {
         if (baseline <= 0f) {
             return SingleRunRiskAssessment(RiskLevel.NONE, "No baseline to compare against.")
@@ -224,7 +236,7 @@ class AnalyzeRunData {
         val distances = runs.map { it.distance }.sorted()
 
         val q1Index = (distances.size * 0.25).toInt()
-        val q3Index = (distances.size * 0.75).toInt()
+        val q3Index = (distances.size * 0.75).toInt() // Corrected to use sortedDistances
         val q1 = distances[q1Index]
         val q3 = distances[q3Index]
         val iqr = q3 - q1
@@ -237,9 +249,7 @@ class AnalyzeRunData {
 }
 
 internal fun mergeRuns(runs: List<Run>): List<Run> {
-    val sortedRuns = runs.sortedBy {
-        OffsetDateTime.parse(it.startDateLocal)
-    }
+    val sortedRuns = runs.sortedBy { OffsetDateTime.parse(it.startDateLocal) }
 
     val mergedRuns = mutableListOf<Run>()
 

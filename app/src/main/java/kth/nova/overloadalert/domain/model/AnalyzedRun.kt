@@ -3,9 +3,9 @@ package kth.nova.overloadalert.domain.model
 import kth.nova.overloadalert.data.local.Run
 
 /**
- * A data class that pairs a run with its calculated risk assessment.
+ * Represents a single run from history, paired with its fully analyzed risk profile.
  */
 data class AnalyzedRun(
     val run: Run,
-    val singleRunRiskAssessment: SingleRunRiskAssessment
+    val risk: CombinedRisk // Changed from SingleRunRiskAssessment to CombinedRisk
 )

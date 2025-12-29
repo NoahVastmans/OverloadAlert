@@ -93,14 +93,16 @@ class AppComponent(context: Context) {
     private val historicalDataAnalyzer: HistoricalDataAnalyzer by lazy { HistoricalDataAnalyzer() }
     private val weeklyTrainingPlanGenerator: WeeklyTrainingPlanGenerator by lazy { WeeklyTrainingPlanGenerator() }
 
-    val analysisRepository: AnalysisRepository by lazy { AnalysisRepository(runningRepository, analyzeRunData) }
+    val analysisRepository: AnalysisRepository by lazy { AnalysisRepository(runningRepository, analyzeRunData, appScope) }
     val planRepository: PlanRepository by lazy {
         PlanRepository(analysisRepository, preferencesRepository, runningRepository, historicalDataAnalyzer, weeklyTrainingPlanGenerator, analyzeRunData, appScope)
     }
 
     val authViewModelFactory: ViewModelProvider.Factory by lazy { AuthViewModel.provideFactory(authRepository, tokenManager) }
     val homeViewModelFactory: ViewModelProvider.Factory by lazy { HomeViewModel.provideFactory(analysisRepository, runningRepository, tokenManager) }
-    val historyViewModelFactory: ViewModelProvider.Factory by lazy { HistoryViewModel.provideFactory(runningRepository, analyzeRunData) }
+    val historyViewModelFactory: ViewModelProvider.Factory by lazy { 
+        HistoryViewModel.provideFactory(runningRepository, analysisRepository) // Update factory
+    }
     val graphsViewModelFactory: ViewModelProvider.Factory by lazy { GraphsViewModel.provideFactory(analysisRepository) }
     val planViewModelFactory: ViewModelProvider.Factory by lazy {
         PlanViewModel.provideFactory(planRepository)
