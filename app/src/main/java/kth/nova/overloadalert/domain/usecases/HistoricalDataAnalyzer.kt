@@ -14,8 +14,9 @@ class HistoricalDataAnalyzer {
         if (runs.size < 8) { // Need at least ~2 weeks of consistent data
             return HistoricalData() // Return default values if not enough data
         }
+        val mergedRuns = mergeRuns(runs)
 
-        val sortedRuns = runs.sortedBy { OffsetDateTime.parse(it.startDateLocal) }
+        val sortedRuns = mergedRuns.sortedBy { OffsetDateTime.parse(it.startDateLocal) }
         val firstRunDate = OffsetDateTime.parse(sortedRuns.first().startDateLocal).toLocalDate()
         val lastRunDate = OffsetDateTime.parse(sortedRuns.last().startDateLocal).toLocalDate()
         val totalDays = ChronoUnit.DAYS.between(firstRunDate, lastRunDate) + 1
@@ -31,7 +32,7 @@ class HistoricalDataAnalyzer {
         val typicalRunDays = dayFrequency.filter { (_, count) -> count.toDouble() / totalWeeks >= 0.5 }.keys
         
         // Use the higher of the two metrics, but keep it within a reasonable range.
-        val typicalRunsPerWeek = max(typicalRunDays.size, averageRunsPerWeek.roundToInt()).coerceIn(2, 7) // TODO think about what to do with several runs on 1 day
+        val typicalRunsPerWeek = max(typicalRunDays.size, averageRunsPerWeek.roundToInt()).coerceIn(2, 7)
 
         // 2. Determine if there is a Clear Structure
         // A simple heuristic: more than 75% of runs happen on the "typical" days.

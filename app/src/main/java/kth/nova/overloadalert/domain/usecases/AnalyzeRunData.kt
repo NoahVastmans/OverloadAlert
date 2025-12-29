@@ -216,38 +216,6 @@ class AnalyzeRunData {
         }
     }
 
-    private fun mergeRuns(runs: List<Run>): List<Run> {
-        val sortedRuns = runs.sortedBy {
-            OffsetDateTime.parse(it.startDateLocal)
-        }
-
-        val mergedRuns = mutableListOf<Run>()
-
-        for (run in sortedRuns) {
-            if (mergedRuns.isEmpty()) {
-                mergedRuns.add(run)
-            } else {
-                val lastMergedRun = mergedRuns.last()
-                val hoursBetween = Duration.between(
-                    OffsetDateTime.parse(lastMergedRun.startDateLocal),
-                    OffsetDateTime.parse(run.startDateLocal)
-                ).toHours()
-
-                if (hoursBetween in 0 until 2) {
-                    mergedRuns[mergedRuns.size - 1] =
-                        lastMergedRun.copy(
-                            distance = lastMergedRun.distance + run.distance,
-                            movingTime = lastMergedRun.movingTime + run.movingTime
-                        )
-                } else {
-                    mergedRuns.add(run)
-                }
-            }
-        }
-
-        return mergedRuns
-    }
-
     internal fun getStableLongestRun(runs: List<Run>): Float {
         if (runs.size < 4) {
             return runs.maxOfOrNull { it.distance } ?: 0f
@@ -266,4 +234,36 @@ class AnalyzeRunData {
         val normalRuns = distances.filter { it <= upperFence }
         return normalRuns.maxOrNull() ?: 0f
     }
+}
+
+internal fun mergeRuns(runs: List<Run>): List<Run> {
+    val sortedRuns = runs.sortedBy {
+        OffsetDateTime.parse(it.startDateLocal)
+    }
+
+    val mergedRuns = mutableListOf<Run>()
+
+    for (run in sortedRuns) {
+        if (mergedRuns.isEmpty()) {
+            mergedRuns.add(run)
+        } else {
+            val lastMergedRun = mergedRuns.last()
+            val hoursBetween = Duration.between(
+                OffsetDateTime.parse(lastMergedRun.startDateLocal),
+                OffsetDateTime.parse(run.startDateLocal)
+            ).toHours()
+
+            if (hoursBetween in 0 until 2) {
+                mergedRuns[mergedRuns.size - 1] =
+                    lastMergedRun.copy(
+                        distance = lastMergedRun.distance + run.distance,
+                        movingTime = lastMergedRun.movingTime + run.movingTime
+                    )
+            } else {
+                mergedRuns.add(run)
+            }
+        }
+    }
+
+    return mergedRuns
 }
