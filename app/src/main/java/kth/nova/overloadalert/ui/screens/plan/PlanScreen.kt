@@ -145,7 +145,7 @@ fun DailyPlanItem(plan: DailyPlan, isToday: Boolean, isRestWeek: Boolean) {
     val displayRunType = if (isRestWeek) {
         when (plan.runType) {
             RunType.LONG,
-            RunType.MODERATE -> RunType.EASY
+            RunType.MODERATE -> RunType.SHORT
             else -> plan.runType
         }
     } else {
@@ -155,7 +155,7 @@ fun DailyPlanItem(plan: DailyPlan, isToday: Boolean, isRestWeek: Boolean) {
     val (icon, color, label) = when (displayRunType) {
         RunType.LONG -> Triple(Icons.Default.Straight, Color(0xFFE57373), "Long Run")
         RunType.MODERATE -> Triple(Icons.Default.TrendingUp, Color(0xFFFFA726), "Moderate Run")
-        RunType.EASY -> Triple(Icons.Default.DirectionsRun, Color(0xFF81C784), "Easy Run")
+        RunType.SHORT -> Triple(Icons.Default.DirectionsRun, Color(0xFF81C784), "Short Run")
         RunType.REST -> Triple(Icons.Default.Hotel, Color.Gray, "Rest Day")
     }
 

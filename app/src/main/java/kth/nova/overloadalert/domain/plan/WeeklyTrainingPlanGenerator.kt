@@ -1,5 +1,6 @@
 package kth.nova.overloadalert.domain.plan
 
+import android.util.Log
 import kth.nova.overloadalert.data.local.Run
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
 import java.time.DayOfWeek
@@ -91,53 +92,103 @@ class WeeklyTrainingPlanGenerator {
         runTypes: Map<DayOfWeek, RunType>,
         safeRanges: Map<DayOfWeek, Pair<Float, Float>>
     ): Map<DayOfWeek, Float> {
+
         val currentVolume = distances.values.sum()
         var discrepancy = targetVolume - currentVolume
 
-        if (discrepancy == 0f) return distances
+        if (kotlin.math.abs(discrepancy) < targetVolume * 0.01f) return distances
 
-        val easyDays = runTypes.filter { it.value == RunType.EASY }.keys
-        if (easyDays.isEmpty()) return distances // Cannot rebalance without easy days
+        fun getDaysOfType(type: RunType) =
+            runTypes.filter { it.value == type }.keys
 
-        if (discrepancy > 0) { // Need to add volume
-            val totalHeadroom = easyDays.sumOf { day ->
-                val (min, max) = safeRanges[day] ?: (0f to Float.MAX_VALUE)
-                val current = distances[day] ?: 0f
-                max(0.0, (max - current).toDouble())
-            }.toFloat()
-
-            if (totalHeadroom > 0) {
-                for (day in easyDays) {
-                    val (_, max) = safeRanges[day] ?: (0f to Float.MAX_VALUE)
-                    val current = distances[day] ?: 0f
-                    val headroom = max(0f, max - current)
-                    val proportion = headroom / totalHeadroom
-                    val volumeToAdd = discrepancy * proportion
-                    distances[day] = current + volumeToAdd
-                }
-            }
-        } else { // Need to remove volume
-            discrepancy = -discrepancy // Make it a positive value to subtract
-            val totalRemovable = easyDays.sumOf { day ->
-                val (min, _) = safeRanges[day] ?: (0f to 0f)
-                val current = distances[day] ?: 0f
-                max(0.0, (current - min).toDouble())
-            }.toFloat()
-
-            if (totalRemovable > 0) {
-                for (day in easyDays) {
-                    val (min, _) = safeRanges[day] ?: (0f to 0f)
-                    val current = distances[day] ?: 0f
-                    val removable = max(0f, current - min)
-                    val proportion = removable / totalRemovable
-                    val volumeToRemove = discrepancy * proportion
-                    distances[day] = current - volumeToRemove
-                }
-            }
+        // Helper to cap addition to safe max
+        fun addToDay(day: DayOfWeek, add: Float): Float {
+            val (min, max) = safeRanges[day] ?: return 0f
+            val current = distances[day] ?: 0f
+            val actualAdd = minOf(add, max - current, discrepancy)
+            distances[day] = current + actualAdd
+            discrepancy -= actualAdd
+            return actualAdd
         }
 
-        return distances
+        // Helper to cap removal to safe min
+        fun removeFromDay(day: DayOfWeek, remove: Float): Float {
+            val (min, max) = safeRanges[day] ?: return 0f
+            val current = distances[day] ?: 0f
+            val actualRemove = minOf(remove, current - min, discrepancy)
+            distances[day] = current - actualRemove
+            discrepancy -= actualRemove
+            return actualRemove
+        }
+
+        if (discrepancy > 0f) {
+            // STEP 1: SHORT → MODERATE
+            val maxModerate =
+                getDaysOfType(RunType.MODERATE).maxOfOrNull { distances[it] ?: 0f } ?: 0f
+            for (day in getDaysOfType(RunType.SHORT)) {
+                if (discrepancy <= 0f) break
+                val current = distances[day] ?: 0f
+                addToDay(day, max(0f, maxModerate - current))
+            }
+
+            // STEP 2: SHORT+MODERATE → LONG
+            val maxLong = getDaysOfType(RunType.LONG).maxOfOrNull { distances[it] ?: 0f } ?: 0f
+            val shortAndModerate = getDaysOfType(RunType.SHORT) + getDaysOfType(RunType.MODERATE)
+            for (day in shortAndModerate) {
+                if (discrepancy <= 0f) break
+                val current = distances[day] ?: 0f
+                addToDay(day, max(0f, maxLong - current))
+            }
+
+            // STEP 3: remaining discrepancy → all runs
+            val allDays =
+                getDaysOfType(RunType.SHORT) + getDaysOfType(RunType.MODERATE) + getDaysOfType(
+                    RunType.LONG
+                )
+            for (day in allDays) {
+                if (discrepancy <= 0f) break
+                addToDay(day, Float.MAX_VALUE) // capped by safeRanges
+            }
+
+            return distances
+        } else {
+
+            // ---------- REMOVE VOLUME ----------
+            discrepancy = -discrepancy
+
+            // STEP 1: LONG → MODERATE max
+            val maxModerate =
+                getDaysOfType(RunType.MODERATE).maxOfOrNull { distances[it] ?: 0f } ?: 0f
+            for (day in getDaysOfType(RunType.LONG)) {
+                if (discrepancy <= 0f) break
+                val current = distances[day] ?: 0f
+                removeFromDay(day, max(0f, current - maxModerate))
+            }
+
+            // STEP 2: LONG + MODERATE → SHORT max
+            val maxShort = getDaysOfType(RunType.SHORT).maxOfOrNull { distances[it] ?: 0f } ?: 0f
+            val longAndModerate = getDaysOfType(RunType.LONG) + getDaysOfType(RunType.MODERATE)
+            for (day in longAndModerate) {
+                if (discrepancy <= 0f) break
+                val current = distances[day] ?: 0f
+                removeFromDay(day, max(0f, current - maxShort))
+            }
+
+            // STEP 3: remaining discrepancy → all runs down to min
+            val allDays =
+                getDaysOfType(RunType.SHORT) + getDaysOfType(RunType.MODERATE) + getDaysOfType(
+                    RunType.LONG
+                )
+            for (day in allDays) {
+                if (discrepancy <= 0f) break
+                removeFromDay(day, Float.MAX_VALUE) // capped by safeRanges
+            }
+
+            return distances
+        }
     }
+
+
 
     private fun validateAndAdjustPlan(
         distances: MutableMap<DayOfWeek, Float>,
@@ -169,6 +220,7 @@ class WeeklyTrainingPlanGenerator {
             safeRanges[dayToValidate] = minSafe to maxSafe
 
             val adjustedDistance = plannedDistance.coerceIn(minSafe, maxSafe)
+            Log.d("WeeklyTrainingPlanGenerator", "Adjusted distance for $dayToValidate: $adjustedDistance, planned: $plannedDistance, min: $minSafe, max: $maxSafe")
             distances[dayToValidate] = adjustedDistance
             val movingTimes = (adjustedDistance * 5).toInt()
 
@@ -262,7 +314,7 @@ class WeeklyTrainingPlanGenerator {
             selectedModerates.forEach { runTypes[it] = RunType.MODERATE }
         }
 
-        // ---- 3. EASY runs ----
+        // ---- 3. SHORT runs ----
         val remainingSlots = targetRunCount - runTypes.size
         if (remainingSlots > 0) {
             val easyCandidates = availableDays.filter { it !in runTypes.keys }.toMutableSet()
@@ -293,7 +345,7 @@ class WeeklyTrainingPlanGenerator {
                 easyCandidates.remove(pick)
             }
 
-            selectedEasy.forEach { runTypes[it] = RunType.EASY }
+            selectedEasy.forEach { runTypes[it] = RunType.SHORT }
         }
 
         return runTypes
@@ -358,8 +410,8 @@ class WeeklyTrainingPlanGenerator {
         }
 
         val moderateDays = runTypes.entries.filter { it.value == RunType.MODERATE }.map { it.key }
+        val moderateShare = (longRunShare * 0.6f)
         if (moderateDays.isNotEmpty()) {
-            val moderateShare = (longRunShare * 0.6f)
             val moderateVolume = max(minDaily, moderateShare)
             moderateDays.forEach {
                 distances[it] = moderateVolume
@@ -367,21 +419,14 @@ class WeeklyTrainingPlanGenerator {
             }
         }
 
-        val easyDays = runTypes.entries.filter { it.value == RunType.EASY }.map { it.key }
-        if (easyDays.isNotEmpty() && remainingVolume > 0) {
-            val easyShare = remainingVolume / easyDays.size
-            easyDays.forEach { 
-                distances[it] = (distances[it] ?: minDaily) + easyShare
-            }
-        }
-
-        easyDays.forEach { easy ->
-            moderateDays.forEach { mod ->
-                if (distances[easy]!! > distances[mod]!!) {
-                    val delta = distances[easy]!! - distances[mod]!!
-                    distances[easy] = distances[mod]!!
-                    remainingVolume += delta
-                }
+        val shortDays = runTypes.entries.filter { it.value == RunType.SHORT }.map { it.key }
+        if (shortDays.isNotEmpty() && remainingVolume > 0) {
+            val shortShare = remainingVolume / shortDays.size
+            val maxShortVolume = moderateShare * 0.9f
+            val maxShortIncrement = max(0f, maxShortVolume - minDaily * shortDays.size)
+            val shortIncrement = shortShare.coerceAtMost(maxShortIncrement)
+            shortDays.forEach {
+                distances[it] = (distances[it] ?: minDaily) + shortIncrement
             }
         }
 

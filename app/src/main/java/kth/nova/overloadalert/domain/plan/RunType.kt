@@ -6,6 +6,6 @@ package kth.nova.overloadalert.domain.plan
 enum class RunType {
     LONG,
     MODERATE,
-    EASY,
+    SHORT,
     REST
 }
