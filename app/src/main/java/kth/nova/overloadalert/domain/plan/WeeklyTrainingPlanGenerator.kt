@@ -12,8 +12,7 @@ import kotlin.math.min
 class WeeklyTrainingPlanGenerator {
 
     fun generate(input: PlanInput, allRuns: List<Run>, analyzeRunData: AnalyzeRunData): WeeklyTrainingPlan {
-        val runDays = determineRunDays(input)
-        val runTypes = assignRunTypes(runDays, input)
+        val runTypes = createStructure(input)
         val weeklyVolume = calculateWeeklyVolume(input)
 
         var dailyDistances = distributeLoad(runTypes, weeklyVolume, input)
@@ -32,9 +31,16 @@ class WeeklyTrainingPlanGenerator {
             )
         }
 
-        return WeeklyTrainingPlan(days = dailyPlans, input.recentData.riskPhase, input.userPreferences.progressionRate)
+        return WeeklyTrainingPlan(days = dailyPlans, input.recentData.riskPhase, input.userPreferences.progressionRate, runTypes)
     }
-    
+
+    private fun createStructure(input: PlanInput): Map<DayOfWeek, RunType> {
+        val runDays = determineRunDays(input)
+        val runTypes = assignRunTypes(runDays, input)
+        return runTypes
+    }
+
+
     private fun rebalanceVolume(
         distances: MutableMap<DayOfWeek, Float>,
         targetVolume: Float,
@@ -147,9 +153,11 @@ class WeeklyTrainingPlanGenerator {
 
         val runTypes = mutableMapOf<DayOfWeek, RunType>()
 
-        val targetRunCount = min(
+        val targetRunCount = if (input.recentData.riskPhase == RiskPhase.DELOAD) {
+            min(input.userPreferences.maxRunsPerWeek, input.historicalData.typicalRunsPerWeek - 1)
+        } else min(
             input.userPreferences.maxRunsPerWeek,
-            input.historicalData.typicalRunsPerWeek
+            input.historicalData.typicalRunsPerWeek + 1
         )
 
         val historicalDays =
