@@ -36,11 +36,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kth.nova.overloadalert.domain.model.RunAnalysis
 import kotlinx.coroutines.delay
+import kth.nova.overloadalert.domain.model.CombinedRisk
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -144,16 +149,16 @@ fun RunAnalysisCard(analysis: RunAnalysis) {
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = combinedRisk.title,
+                text = convertCombinedRisk(combinedRisk).first,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = combinedRisk.color
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = combinedRisk.message,
+                text = convertCombinedRisk(combinedRisk).second,
                 style = MaterialTheme.typography.bodyMedium,
-                color = combinedRisk.color.copy(alpha = 0.8f)
+                color = combinedRisk.color.copy(alpha = 0.9f)
             )
         }
     }
@@ -184,4 +189,48 @@ fun DataRow(label: String, value: String) {
         Text(text = label, fontSize = 16.sp, color = Color.Gray)
         Text(text = value, fontSize = 16.sp, fontWeight = FontWeight.Medium)
     }
+}
+
+fun convertCombinedRisk(combinedRisk: CombinedRisk): Pair<String, AnnotatedString> {
+    // 1. Extract load-related title (ACWR part)
+    val loadTitle = combinedRisk.title
+        .split("·", "-", "|")
+        .first()
+        .trim()
+
+    // 2. Map load title to ACWR-only message
+    val acwrMessage: AnnotatedString = when {
+        loadTitle.contains("Low", ignoreCase = true) ->
+            buildAnnotatedString {
+                append("Your recent training load is low, indicating detraining/recovery and reduced stimulation of muscles, tendons, and bones. While short-term injury risk may appear low, detrained tissues tolerate sudden increases poorly.\n \n")
+                withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) { append("Guidance:") }
+                append(" Rebuild volume gradually and avoid rapid increases in weekly distance or intensity.")
+            }
+
+        loadTitle.contains("Optimal", ignoreCase = true) ->
+            buildAnnotatedString {
+                append("Your recent training load is well balanced, indicating good adaptation to training stress. This range is generally associated with the lowest injury risk when progression is controlled.\n \n")
+                withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) { append("Guidance:") }
+                append(" Maintain steady progression and avoid unnecessary spikes in volume or intensity.")
+            }
+
+        loadTitle.contains("Elevated", ignoreCase = true) ->
+            buildAnnotatedString {
+                append("Your recent training load is above the optimal range, suggesting accumulating fatigue. Injury risk increases when elevated load is maintained without sufficient recovery.\n \n")
+                withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) { append("Guidance:") }
+                append(" Reduce training load slightly and prioritize recovery before further progression.")
+            }
+
+        loadTitle.contains("High", ignoreCase = true) ->
+            buildAnnotatedString {
+                append("Your recent training load is far above optimal, indicating significant accumulated fatigue and elevated injury risk. Continued loading at this level greatly increases the chance of injury.\n \n")
+                withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) { append("Guidance:") }
+                append(" Significantly reduce training load and allow focused recovery before resuming progression.")
+            }
+
+        else ->
+            buildAnnotatedString { append("Your recent training load could not be classified. Use caution when progressing training volume.") }
+    }
+
+    return loadTitle to acwrMessage
 }

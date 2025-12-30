@@ -14,9 +14,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Hotel
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.Straight
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.AlertDialog
@@ -153,9 +155,9 @@ fun DailyPlanItem(plan: DailyPlan, isToday: Boolean, isRestWeek: Boolean) {
     }
 
     val (icon, color, label) = when (displayRunType) {
-        RunType.LONG -> Triple(Icons.Default.Straight, Color(0xFFE57373), "Long Run")
-        RunType.MODERATE -> Triple(Icons.Default.TrendingUp, Color(0xFFFFA726), "Moderate Run")
-        RunType.SHORT -> Triple(Icons.Default.DirectionsRun, Color(0xFF81C784), "Short Run")
+        RunType.LONG -> Triple(Icons.AutoMirrored.Filled.DirectionsRun, Color(0xFF9C27B0), "Long Run")
+        RunType.MODERATE -> Triple(Icons.AutoMirrored.Filled.DirectionsRun, Color(0xFF009688), "Moderate Run")
+        RunType.SHORT -> Triple(Icons.AutoMirrored.Filled.DirectionsRun, Color(0xFF8BC34A), "Short Run")
         RunType.REST -> Triple(Icons.Default.Hotel, Color.Gray, "Rest Day")
     }
 
