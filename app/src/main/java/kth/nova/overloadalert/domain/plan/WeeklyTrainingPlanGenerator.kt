@@ -6,13 +6,21 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.time.temporal.TemporalAdjusters
 import kotlin.math.max
 import kotlin.math.min
 
 class WeeklyTrainingPlanGenerator {
 
     fun generate(input: PlanInput, allRuns: List<Run>, analyzeRunData: AnalyzeRunData): WeeklyTrainingPlan {
-        val runTypes = createStructure(input)
+        val shouldRecompute = shouldRecomputeStructure(input, allRuns)
+        
+        val runTypes = if (shouldRecompute) {
+            createStructure(input)
+        } else {
+            input.previousPlan!!.runTypesStructure
+        }
+        
         val weeklyVolume = calculateWeeklyVolume(input)
 
         var dailyDistances = distributeLoad(runTypes, weeklyVolume, input)
@@ -31,7 +39,43 @@ class WeeklyTrainingPlanGenerator {
             )
         }
 
-        return WeeklyTrainingPlan(days = dailyPlans, input.recentData.riskPhase, input.userPreferences.progressionRate, runTypes)
+        val currentWeekStart = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+
+        return WeeklyTrainingPlan(
+            startDate = currentWeekStart,
+            days = dailyPlans, 
+            riskPhase = input.recentData.riskPhase, 
+            progressionRate = input.userPreferences.progressionRate, 
+            runTypesStructure = runTypes,
+            userPreferences = input.userPreferences
+        )
+    }
+
+    private fun shouldRecomputeStructure(input: PlanInput, runsForPlanning: List<Run>): Boolean {
+        val prev = input.previousPlan ?: return true // No previous plan, must compute
+
+        // 1. Risk Phase Changed
+        if (input.recentData.riskPhase != prev.riskPhase) return true
+
+        // 2. Preferences Changed (Structural)
+        val newPrefs = input.userPreferences
+        val oldPrefs = prev.userPreferences ?: return true 
+
+        if (newPrefs.preferredLongRunDays != oldPrefs.preferredLongRunDays) return true
+        if (newPrefs.forbiddenRunDays != oldPrefs.forbiddenRunDays) return true
+        if (newPrefs.maxRunsPerWeek != oldPrefs.maxRunsPerWeek) return true
+
+        // 3. Adherence Check
+        val planStart = prev.startDate ?: return true
+        val firstDayType = prev.runTypesStructure[planStart.dayOfWeek] ?: RunType.REST
+        val runHappened = runsForPlanning.any {
+            OffsetDateTime.parse(it.startDateLocal).toLocalDate() == planStart
+        }
+
+        if (firstDayType != RunType.REST && !runHappened) return true // missed a run
+        if (firstDayType == RunType.REST && runHappened) return true // ran on rest day
+
+        return false
     }
 
     private fun createStructure(input: PlanInput): Map<DayOfWeek, RunType> {
@@ -179,51 +223,82 @@ class WeeklyTrainingPlanGenerator {
             else -> 0
         }
 
-        val moderateCandidates = availableDays
-            .filter { it !in runTypes.keys }
-            .filter { day ->
-                longRunDay == null || !day.isAdjacentTo(longRunDay)
+        if (moderateRunCount > 0) {
+            val moderateCandidates = availableDays
+                .filter { it !in runTypes.keys }
+                .filter { day -> longRunDay == null || !day.isAdjacentTo(longRunDay) }
+                .toMutableList()
+
+            val historicalCandidates = moderateCandidates.filter { it in historicalDays }
+                .sortedBy { it.value } // early -> late
+                .toMutableList()
+            val nonHistoricalCandidates = moderateCandidates.filter { it !in historicalDays }
+                .sortedBy { it.value } // early -> late
+                .toMutableList()
+
+            val selectedModerates = mutableListOf<DayOfWeek>()
+
+            // 1. Pick historical candidates alternating early/late to spread
+            var left = 0
+            var right = historicalCandidates.size - 1
+            var pickLeft = true
+            while (selectedModerates.size < moderateRunCount && left <= right && historicalCandidates.isNotEmpty()) {
+                val candidate = if (pickLeft) historicalCandidates[left++] else historicalCandidates[right--]
+                val conflicts = selectedModerates.any { it.isAdjacentTo(candidate) }
+                if (!conflicts) selectedModerates.add(candidate)
+                pickLeft = !pickLeft
             }
-            .sortedWith(
-                compareByDescending<DayOfWeek> {it in historicalDays }
-                    .thenBy { it.value }
-            )
 
-        val selectedModerates = mutableListOf<DayOfWeek>()
-
-        for (day in moderateCandidates) {
-            if (selectedModerates.size == moderateRunCount) break
-
-            val conflicts = selectedModerates.any { it.isAdjacentTo(day) }
-            if (!conflicts) {
-                selectedModerates.add(day)
+            // 2. Fill remaining slots with non-historical candidates alternating early/late
+            left = 0
+            right = nonHistoricalCandidates.size - 1
+            while (selectedModerates.size < moderateRunCount && left <= right) {
+                val candidate = if (pickLeft) nonHistoricalCandidates[left++] else nonHistoricalCandidates[right--]
+                val conflicts = selectedModerates.any { it.isAdjacentTo(candidate) }
+                if (!conflicts) selectedModerates.add(candidate)
+                pickLeft = !pickLeft
             }
-        }
 
-        selectedModerates.forEach {
-            runTypes[it] = RunType.MODERATE
+            selectedModerates.forEach { runTypes[it] = RunType.MODERATE }
         }
 
         // ---- 3. EASY runs ----
-        val remainingSlots =
-            targetRunCount - runTypes.size
-
+        val remainingSlots = targetRunCount - runTypes.size
         if (remainingSlots > 0) {
-            val easyCandidates = availableDays
-                .filter { it !in runTypes.keys }
-                .sortedWith(
-                    compareByDescending<DayOfWeek> {it in historicalDays }
-                        .thenBy { it.value }
-                )
+            val easyCandidates = availableDays.filter { it !in runTypes.keys }.toMutableSet()
+            val selectedEasy = mutableListOf<DayOfWeek>()
 
-            easyCandidates
-                .take(remainingSlots)
-                .forEach { runTypes[it] = RunType.EASY }
+            while (selectedEasy.size < remainingSlots && easyCandidates.isNotEmpty()) {
+                val assignedDays = runTypes.keys + selectedEasy
+
+                // Compute min distance to assigned days for each candidate
+                val candidateGaps = easyCandidates.groupBy { candidate ->
+                    assignedDays.minOfOrNull { assigned -> distanceInDays(candidate, assigned) } ?: 7
+                }
+
+                // Max gap
+                val maxGap = candidateGaps.keys.maxOrNull() ?: break
+
+                // Candidates with this gap
+                val bestCandidates = candidateGaps[maxGap]!!
+
+                // Tie-breaker: alternate early/late selection
+                val pick = if (selectedEasy.size % 2 == 0) {
+                    bestCandidates.minByOrNull { it.value }!! // early
+                } else {
+                    bestCandidates.maxByOrNull { it.value }!! // late
+                }
+
+                selectedEasy.add(pick)
+                easyCandidates.remove(pick)
+            }
+
+            selectedEasy.forEach { runTypes[it] = RunType.EASY }
         }
 
-        // Everything else is REST (implicitly)
         return runTypes
     }
+
 
 
 
@@ -316,6 +391,11 @@ class WeeklyTrainingPlanGenerator {
     private fun DayOfWeek.isAdjacentTo(other: DayOfWeek): Boolean {
         val diff = kotlin.math.abs(this.value - other.value)
         return diff == 1 || diff == 6 // handles wrap-around (Sunday ↔ Monday)
+    }
+
+    private fun distanceInDays(a: DayOfWeek, b: DayOfWeek): Int {
+        val diff = kotlin.math.abs(a.value - b.value)
+        return min(diff, 7 - diff)
     }
 
 }

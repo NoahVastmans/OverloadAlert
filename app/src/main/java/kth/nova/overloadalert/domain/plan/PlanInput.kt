@@ -6,5 +6,7 @@ package kth.nova.overloadalert.domain.plan
 data class PlanInput(
     val userPreferences: UserPreferences,
     val historicalData: HistoricalData,
-    val recentData: RecentData
+    val recentData: RecentData,
+    val riskOverride: RiskOverride?,
+    val previousPlan: WeeklyTrainingPlan? = null
 )

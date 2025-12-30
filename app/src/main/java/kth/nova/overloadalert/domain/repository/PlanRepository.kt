@@ -1,6 +1,7 @@
 package kth.nova.overloadalert.domain.repository
 
 import kth.nova.overloadalert.data.RunningRepository
+import kth.nova.overloadalert.data.local.PlanStorage
 import kth.nova.overloadalert.domain.model.AcwrRiskLevel
 import kth.nova.overloadalert.domain.model.RiskLevel
 import kth.nova.overloadalert.domain.plan.*
@@ -19,7 +20,8 @@ import java.time.temporal.ChronoUnit
 
 class PlanRepository(
     analysisRepository: AnalysisRepository,
-    private val preferencesRepository: PreferencesRepository,
+    preferencesRepository: PreferencesRepository,
+    private val planStorage: PlanStorage,
     runningRepository: RunningRepository,
     historicalDataAnalyzer: HistoricalDataAnalyzer,
     planGenerator: WeeklyTrainingPlanGenerator,
@@ -30,8 +32,9 @@ class PlanRepository(
     val latestPlan: StateFlow<WeeklyTrainingPlan?> = combine(
         analysisRepository.latestAnalysis.filterNotNull(),
         preferencesRepository.preferencesFlow,
+        planStorage.riskOverrideFlow,
         runningRepository.getAllRuns()
-    ) { analysisData, userPreferences, allRuns ->
+    ) { analysisData, userPreferences, override, allRuns ->
 
         val planningStartDate = LocalDate.now()
         val runsForPlanning = allRuns.filter {
@@ -67,7 +70,6 @@ class PlanRepository(
         val freshLongRunRiskDetected =  freshLongRunMultiplier < 1.1f
 
 
-        val override = userPreferences.riskOverride
         val daysSinceOverride = override?.let { ChronoUnit.DAYS.between(it.startDate, today) }
 
         val nextOverride = when {
@@ -119,9 +121,7 @@ class PlanRepository(
         }
 
         if (nextOverride != override) {
-            preferencesRepository.savePreferences(
-                userPreferences.copy(riskOverride = nextOverride)
-            )
+            planStorage.saveRiskOverride(nextOverride)
         }
 
         var acwrMultiplier = 1.0f
@@ -158,18 +158,23 @@ class PlanRepository(
             maxSafeLongRun = adjustedMaxLongRun,
             baseWeeklyVolume = adjustedWeeklyVolume,
             minDailyVolume = adjustedWeeklyVolume/10f,
-            riskPhase = override?.phase
+            riskPhase = nextOverride?.phase
         )
+
+        val previousPlan = planStorage.loadPlan()
 
         val planInput = PlanInput(
             userPreferences = userPreferences.copy(progressionRate = effectiveProgressionRate),
             historicalData = historicalData,
-            recentData = recentData
+            recentData = recentData,
+            riskOverride = nextOverride,
+            previousPlan = previousPlan
         )
 
         // Pass the clean runs and the analyzer to the generator
-        planGenerator.generate(planInput, runsForPlanning, analyzeRunData)
-
+        val newPlan = planGenerator.generate(planInput, runsForPlanning, analyzeRunData)
+        planStorage.savePlan(newPlan)
+        newPlan
 
     }.stateIn(
         scope = coroutineScope,

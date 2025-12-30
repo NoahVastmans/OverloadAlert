@@ -4,10 +4,13 @@ import android.content.Context
 import androidx.lifecycle.ViewModelProvider
 import androidx.room.Room
 import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kth.nova.overloadalert.data.AuthRepository
+import kth.nova.overloadalert.data.LocalDateAdapter
 import kth.nova.overloadalert.data.RunningRepository
 import kth.nova.overloadalert.data.TokenManager
 import kth.nova.overloadalert.data.local.AppDatabase
+import kth.nova.overloadalert.data.local.PlanStorage
 import kth.nova.overloadalert.data.remote.StravaApiService
 import kth.nova.overloadalert.data.remote.StravaAuthService
 import kth.nova.overloadalert.data.remote.TokenAuthenticator
@@ -30,13 +33,17 @@ import kotlinx.coroutines.flow.launchIn
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
+import java.time.LocalDate
 
 class AppComponent(context: Context) {
 
     // Create an application-level coroutine scope
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    private val moshi = Moshi.Builder().build()
+    private val moshi = Moshi.Builder()
+        .add(LocalDateAdapter())
+        .add(KotlinJsonAdapterFactory())
+        .build()
 
     val tokenManager by lazy { TokenManager(context) }
 
@@ -85,6 +92,9 @@ class AppComponent(context: Context) {
         ).build()
     }
 
+    // Storage
+    val planStorage: PlanStorage by lazy { PlanStorage(context, moshi) }
+
     val authRepository: AuthRepository by lazy { AuthRepository(stravaAuthService, tokenManager) }
     val runningRepository: RunningRepository by lazy { RunningRepository(appDatabase.runDao(), stravaApiService, tokenManager) }
     val preferencesRepository: PreferencesRepository by lazy { PreferencesRepository(context) }
@@ -95,13 +105,13 @@ class AppComponent(context: Context) {
 
     val analysisRepository: AnalysisRepository by lazy { AnalysisRepository(runningRepository, analyzeRunData, appScope) }
     val planRepository: PlanRepository by lazy {
-        PlanRepository(analysisRepository, preferencesRepository, runningRepository, historicalDataAnalyzer, weeklyTrainingPlanGenerator, analyzeRunData, appScope)
+        PlanRepository(analysisRepository, preferencesRepository, planStorage, runningRepository, historicalDataAnalyzer, weeklyTrainingPlanGenerator, analyzeRunData, appScope)
     }
 
     val authViewModelFactory: ViewModelProvider.Factory by lazy { AuthViewModel.provideFactory(authRepository, tokenManager) }
     val homeViewModelFactory: ViewModelProvider.Factory by lazy { HomeViewModel.provideFactory(analysisRepository, runningRepository, tokenManager) }
     val historyViewModelFactory: ViewModelProvider.Factory by lazy { 
-        HistoryViewModel.provideFactory(runningRepository, analysisRepository) // Update factory
+        HistoryViewModel.provideFactory(runningRepository, analysisRepository) 
     }
     val graphsViewModelFactory: ViewModelProvider.Factory by lazy { GraphsViewModel.provideFactory(analysisRepository) }
     val planViewModelFactory: ViewModelProvider.Factory by lazy {
