@@ -45,7 +45,13 @@ class PlanRepository(
 
         val prePlanAnalysis = analyzeRunData(runsForPlanning, planningStartDate)
 
-        val historicalData = historicalDataAnalyzer(runsForPlanning)
+        val relevantHistoricalRuns = runsForPlanning.filter {
+            OffsetDateTime.parse(it.startDateLocal)
+                .toLocalDate()
+                .isAfter(planningStartDate.minusWeeks(8))
+        }
+
+        val historicalData = historicalDataAnalyzer(relevantHistoricalRuns)
 
         val today = LocalDate.now()
 
