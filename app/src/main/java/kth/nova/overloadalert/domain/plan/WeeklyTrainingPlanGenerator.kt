@@ -136,57 +136,114 @@ class WeeklyTrainingPlanGenerator {
     }
 
     private fun determineRunDays(input: PlanInput): Set<DayOfWeek> {
-        val targetRunCount = min(input.userPreferences.maxRunsPerWeek, input.historicalData.typicalRunsPerWeek)
-        val availableDays = DayOfWeek.entries.toSet() - input.userPreferences.forbiddenRunDays
-
-        if (input.historicalData.hasClearWeeklyStructure) {
-            val structuredDays = input.historicalData.typicalRunDays.intersect(availableDays)
-            return if (structuredDays.size > targetRunCount) {
-                structuredDays.take(targetRunCount).toSet()
-            } else {
-                structuredDays
-            }
-        }
-
-        return availableDays.take(targetRunCount).toSet()
+        return DayOfWeek.entries.toSet() - input.userPreferences.forbiddenRunDays
     }
 
-    private fun assignRunTypes(runDays: Set<DayOfWeek>, input: PlanInput): Map<DayOfWeek, RunType> {
+
+    private fun assignRunTypes(
+        availableDays: Set<DayOfWeek>,
+        input: PlanInput
+    ): Map<DayOfWeek, RunType> {
+
         val runTypes = mutableMapOf<DayOfWeek, RunType>()
 
-        val longRunDay = findLongRunDay(runDays, input)
+        val targetRunCount = min(
+            input.userPreferences.maxRunsPerWeek,
+            input.historicalData.typicalRunsPerWeek
+        )
+
+        val historicalDays =
+            if (input.historicalData.hasClearWeeklyStructure)
+                input.historicalData.typicalRunDays
+            else
+                emptySet()
+
+        // ---- 1. LONG run ----
+        val longRunDay = selectLongRunDay(availableDays, input)
         if (longRunDay != null) {
             runTypes[longRunDay] = RunType.LONG
         }
 
-        val remainingRunDays = runDays - runTypes.keys
+        // ---- 2. MODERATE runs ----
         val moderateRunCount = when {
-            runDays.size >= 5 -> 2
-            runDays.size >= 3 -> 1
+            targetRunCount >= 5 -> 2
+            targetRunCount >= 3 -> 1
             else -> 0
         }
-        remainingRunDays.take(moderateRunCount).forEach {
+
+        val moderateCandidates = availableDays
+            .filter { it !in runTypes.keys }
+            .filter { day ->
+                longRunDay == null || !day.isAdjacentTo(longRunDay)
+            }
+            .sortedWith(
+                compareByDescending<DayOfWeek> {it in historicalDays }
+                    .thenBy { it.value }
+            )
+
+        val selectedModerates = mutableListOf<DayOfWeek>()
+
+        for (day in moderateCandidates) {
+            if (selectedModerates.size == moderateRunCount) break
+
+            val conflicts = selectedModerates.any { it.isAdjacentTo(day) }
+            if (!conflicts) {
+                selectedModerates.add(day)
+            }
+        }
+
+        selectedModerates.forEach {
             runTypes[it] = RunType.MODERATE
         }
 
-        (runDays - runTypes.keys).forEach {
-            runTypes[it] = RunType.EASY
+        // ---- 3. EASY runs ----
+        val remainingSlots =
+            targetRunCount - runTypes.size
+
+        if (remainingSlots > 0) {
+            val easyCandidates = availableDays
+                .filter { it !in runTypes.keys }
+                .sortedWith(
+                    compareByDescending<DayOfWeek> {it in historicalDays }
+                        .thenBy { it.value }
+                )
+
+            easyCandidates
+                .take(remainingSlots)
+                .forEach { runTypes[it] = RunType.EASY }
         }
 
+        // Everything else is REST (implicitly)
         return runTypes
     }
 
-    private fun findLongRunDay(runDays: Set<DayOfWeek>, input: PlanInput): DayOfWeek? {
-        val userPreferredDay = input.userPreferences.preferredLongRunDays.firstOrNull { it in runDays }
-        if (userPreferredDay != null) return userPreferredDay
 
-        val historicalDay = input.historicalData.typicalLongRunDay
-        if (historicalDay != null && historicalDay in runDays) return historicalDay
 
-        val weekendDay = runDays.find { it == DayOfWeek.SUNDAY } ?: runDays.find { it == DayOfWeek.SATURDAY }
-        if (weekendDay != null) return weekendDay
-        
-        return runDays.maxByOrNull { it.value }
+    private fun selectLongRunDay(availableDays: Set<DayOfWeek>, input: PlanInput): DayOfWeek? {
+        val preferred = input.userPreferences.preferredLongRunDays
+            .filter { it in availableDays }
+
+        val historicalDays =
+            if (input.historicalData.hasClearWeeklyStructure)
+                input.historicalData.typicalRunDays
+            else
+                emptySet()
+
+        // 1. Preferred ∩ historical
+        preferred.firstOrNull { it in historicalDays }
+            ?.let { return it }
+
+        // 2. Preferred only
+        preferred.firstOrNull()
+            ?.let { return it }
+
+        // 3. Historical long-run day
+        input.historicalData.typicalLongRunDay
+            ?.takeIf { it in availableDays }
+            ?.let { return it }
+
+        // 4. Fallback: latest available day
+        return availableDays.maxByOrNull { it.value }
     }
 
     private fun calculateWeeklyVolume(input: PlanInput): Float {
@@ -247,4 +304,10 @@ class WeeklyTrainingPlanGenerator {
 
         return distances
     }
+
+    private fun DayOfWeek.isAdjacentTo(other: DayOfWeek): Boolean {
+        val diff = kotlin.math.abs(this.value - other.value)
+        return diff == 1 || diff == 6 // handles wrap-around (Sunday ↔ Monday)
+    }
+
 }
