@@ -23,7 +23,13 @@ class PreferencesViewModel(
     init {
         preferencesRepository.preferencesFlow
             .onEach { prefs ->
-                _uiState.update { it.copy(isLoading = false, preferences = prefs) }
+                _uiState.update { 
+                    it.copy(
+                        isLoading = false, 
+                        preferences = prefs,
+                        isPlanValid = preferencesRepository.isPlanValid(prefs)
+                    ) 
+                }
             }
             .launchIn(viewModelScope)
     }
@@ -36,7 +42,13 @@ class PreferencesViewModel(
     }
 
     fun onPreferencesChanged(newPreferences: UserPreferences) {
-        _uiState.update { it.copy(preferences = newPreferences) }
+        val isValid = preferencesRepository.isPlanValid(newPreferences)
+        _uiState.update { 
+            it.copy(
+                preferences = newPreferences,
+                isPlanValid = isValid
+            ) 
+        }
     }
 
     companion object {

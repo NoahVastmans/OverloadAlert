@@ -50,6 +50,24 @@ class PreferencesRepository(context: Context) {
         _preferencesFlow.update { preferences }
     }
 
+    fun isPlanValid(preferences: UserPreferences): Boolean {
+        // Example check: available days must be >= max runs per week
+        val availableDays = DayOfWeek.entries.size - preferences.forbiddenRunDays.size
+        if (availableDays < preferences.maxRunsPerWeek) {
+            return false
+        }
+        
+        // Add more checks if necessary, e.g., about long run days
+        if (preferences.preferredLongRunDays.isNotEmpty()) {
+            val possibleLongRunDays = preferences.preferredLongRunDays.filter { it !in preferences.forbiddenRunDays }
+            if (possibleLongRunDays.isEmpty()) {
+                return false
+            }
+        }
+        
+        return true
+    }
+
     companion object {
         private const val KEY_MAX_RUNS_PER_WEEK = "max_runs_per_week"
         private const val KEY_PREFERRED_LONG_RUN_DAYS = "preferred_long_run_days"

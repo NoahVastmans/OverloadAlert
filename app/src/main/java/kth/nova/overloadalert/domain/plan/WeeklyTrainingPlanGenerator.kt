@@ -15,7 +15,8 @@ import kotlin.math.min
 class WeeklyTrainingPlanGenerator {
 
     fun generate(input: PlanInput, allRuns: List<Run>, analyzeRunData: AnalyzeRunData): WeeklyTrainingPlan {
-        val shouldRecompute = shouldRecomputeStructure(input, allRuns)
+        val today = LocalDate.now()
+        val shouldRecompute = shouldRecomputeStructure(input, allRuns, today)
         
         val runTypes = if (shouldRecompute) {
             createStructure(input)
@@ -32,19 +33,21 @@ class WeeklyTrainingPlanGenerator {
             dailyDistances = rebalanceVolume(validatedDistances.toMutableMap(), weeklyVolume, runTypes, safeRanges)
         }
 
-        val dailyPlans = DayOfWeek.entries.map {
+        // Generate daily plans for 7 days starting from today
+        val dailyPlans = (0..6).map { i ->
+            val date = today.plusDays(i.toLong())
+            val dayOfWeek = date.dayOfWeek
             DailyPlan(
-                dayOfWeek = it,
-                runType = runTypes[it] ?: RunType.REST,
-                plannedDistance = dailyDistances[it] ?: 0f,
+                date = date,
+                dayOfWeek = dayOfWeek,
+                runType = runTypes[dayOfWeek] ?: RunType.REST,
+                plannedDistance = dailyDistances[dayOfWeek] ?: 0f,
                 isRestWeek = input.recentData.riskPhase == RiskPhase.DELOAD
             )
         }
 
-        val currentWeekStart = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-
         return WeeklyTrainingPlan(
-            startDate = currentWeekStart,
+            startDate = today,
             days = dailyPlans, 
             riskPhase = input.recentData.riskPhase, 
             progressionRate = input.userPreferences.progressionRate, 
@@ -53,7 +56,7 @@ class WeeklyTrainingPlanGenerator {
         )
     }
 
-    private fun shouldRecomputeStructure(input: PlanInput, runsForPlanning: List<Run>): Boolean {
+    private fun shouldRecomputeStructure(input: PlanInput, runsForPlanning: List<Run>, today: LocalDate): Boolean {
         val prev = input.previousPlan ?: return true // No previous plan, must compute
 
         // 1. Risk Phase Changed
@@ -68,14 +71,18 @@ class WeeklyTrainingPlanGenerator {
         if (newPrefs.maxRunsPerWeek != oldPrefs.maxRunsPerWeek) return true
 
         // 3. Adherence Check
-        val planStart = prev.startDate ?: return true
-        val firstDayType = prev.runTypesStructure[planStart.dayOfWeek] ?: RunType.REST
-        val runHappened = runsForPlanning.any {
-            OffsetDateTime.parse(it.startDateLocal).toLocalDate() == planStart
-        }
+        // If the user skipped a run or ran on a rest day yesterday, we should recompute.
+        val yesterday = today.minusDays(1)
+        val prevPlanDay = prev.days.find { it.date == yesterday }
 
-        if (firstDayType != RunType.REST && !runHappened) return true // missed a run
-        if (firstDayType == RunType.REST && runHappened) return true // ran on rest day
+        if (prevPlanDay != null) {
+            val runHappened = runsForPlanning.any {
+                OffsetDateTime.parse(it.startDateLocal).toLocalDate() == yesterday
+            }
+
+            if (prevPlanDay.runType != RunType.REST && !runHappened) return true // Missed a run yesterday
+            if (prevPlanDay.runType == RunType.REST && runHappened) return true // Ran on a rest day yesterday
+        }
 
         return false
     }

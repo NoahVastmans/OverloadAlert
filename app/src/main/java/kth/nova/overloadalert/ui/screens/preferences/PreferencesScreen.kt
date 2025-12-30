@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -31,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +57,14 @@ fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {
     val uiState by viewModel.uiState.collectAsState()
     var showDiscardDialog by remember { mutableStateOf(false) }
     var infoDialogText by remember { mutableStateOf<String?>(null) }
+    var showInvalidPlanDialog by remember { mutableStateOf(false) }
+
+    // Check plan validity when uiState changes
+    LaunchedEffect(uiState.isPlanValid, uiState.isLoading) {
+        if (!uiState.isPlanValid && !uiState.isLoading) {
+            showInvalidPlanDialog = true
+        }
+    }
 
     BackHandler(enabled = true) {
         showDiscardDialog = true
@@ -75,6 +86,27 @@ fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {
             dismissButton = {
                 TextButton(onClick = { showDiscardDialog = false }) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showInvalidPlanDialog) {
+        AlertDialog(
+            onDismissRequest = { showInvalidPlanDialog = false },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Invalid Configuration") },
+            text = { 
+                Text(
+                    "The current settings prevent a valid training plan from being generated.\n\n" +
+                    "Possible reasons:\n" +
+                    "• All preferred long run days are forbidden\n" +
+                    "• Too many forbidden days selected for the chosen maximal days per week"
+                ) 
+            },
+            confirmButton = {
+                TextButton(onClick = { showInvalidPlanDialog = false }) {
+                    Text("OK")
                 }
             }
         )
@@ -124,22 +156,39 @@ fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {
             Surface(shadowElevation = 8.dp) {
                 Button(
                     onClick = {
-                        viewModel.savePreferences(
-                            uiState.preferences,
-                            onNavigateBack
-                        )
+                        if (uiState.isPlanValid) {
+                            viewModel.savePreferences(
+                                uiState.preferences,
+                                onNavigateBack
+                            )
+                        } else {
+                            showInvalidPlanDialog = true
+                        }
                     },
+                    enabled = uiState.isPlanValid,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (uiState.isPlanValid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp)
                         .height(52.dp)
                 ) {
-                    Icon(Icons.Default.Check, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "Save Preferences",
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                    if (uiState.isPlanValid) {
+                        Icon(Icons.Default.Check, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Save Preferences",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    } else {
+                        Icon(Icons.Default.Warning, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Invalid Settings",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
                 }
             }
         }
