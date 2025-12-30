@@ -8,6 +8,7 @@ import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.temporal.TemporalAdjusters
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -93,99 +94,67 @@ class WeeklyTrainingPlanGenerator {
         safeRanges: Map<DayOfWeek, Pair<Float, Float>>
     ): Map<DayOfWeek, Float> {
 
-        val currentVolume = distances.values.sum()
-        var discrepancy = targetVolume - currentVolume
+        var discrepancy = targetVolume - distances.values.sum()
+        if (discrepancy == 0f) return distances
 
-        if (kotlin.math.abs(discrepancy) < targetVolume * 0.01f) return distances
+        // Group days by run type
+        val shortDays = runTypes.filter { it.value == RunType.SHORT }.keys.toList()
+        val moderateDays = runTypes.filter { it.value == RunType.MODERATE }.keys.toList()
+        val longDays = runTypes.filter { it.value == RunType.LONG }.keys.toList()
 
-        fun getDaysOfType(type: RunType) =
-            runTypes.filter { it.value == type }.keys
+        // Determine order and min/max targets
+        val add = discrepancy > 0
+        var remaining = kotlin.math.abs(discrepancy)
 
-        // Helper to cap addition to safe max
-        fun addToDay(day: DayOfWeek, add: Float): Float {
-            val (min, max) = safeRanges[day] ?: return 0f
-            val current = distances[day] ?: 0f
-            val actualAdd = minOf(add, max - current, discrepancy)
-            distances[day] = current + actualAdd
-            discrepancy -= actualAdd
-            return actualAdd
-        }
+        val processOrder = if (add) listOf(shortDays, moderateDays, longDays)
+        else listOf(longDays, moderateDays, shortDays)
 
-        // Helper to cap removal to safe min
-        fun removeFromDay(day: DayOfWeek, remove: Float): Float {
-            val (min, max) = safeRanges[day] ?: return 0f
-            val current = distances[day] ?: 0f
-            val actualRemove = minOf(remove, current - min, discrepancy)
-            distances[day] = current - actualRemove
-            discrepancy -= actualRemove
-            return actualRemove
-        }
+        // Helper to get current, min, max
+        fun current(day: DayOfWeek) = distances[day] ?: 0f
+        fun maxSafe(day: DayOfWeek) = safeRanges[day]?.second ?: Float.MAX_VALUE
+        fun minSafe(day: DayOfWeek) = safeRanges[day]?.first ?: 0f
 
-        if (discrepancy > 0f) {
-            // STEP 1: SHORT → MODERATE
-            val maxModerate =
-                getDaysOfType(RunType.MODERATE).maxOfOrNull { distances[it] ?: 0f } ?: 0f
-            for (day in getDaysOfType(RunType.SHORT)) {
-                if (discrepancy <= 0f) break
-                val current = distances[day] ?: 0f
-                addToDay(day, max(0f, maxModerate - current))
+        if (add) {
+            // Stepwise leveling: Short → Moderate → Long → All
+            val targets = listOf(
+                shortDays to { day: DayOfWeek -> moderateDays.mapNotNull { current(it) }.minOrNull() ?: current(day) },
+                moderateDays to { day: DayOfWeek -> longDays.mapNotNull { current(it) }.minOrNull() ?: current(day) },
+                shortDays + moderateDays + longDays to { day: DayOfWeek -> maxSafe(day) }
+            )
+
+            for ((days, targetFn) in targets) {
+                for (day in days) {
+                    if (remaining <= 0f) break
+                    val cap = min(targetFn(day), maxSafe(day))
+                    val toAdd = minOf(cap - current(day), remaining)
+                    if (toAdd > 0f) {
+                        distances[day] = current(day) + toAdd
+                        remaining -= toAdd
+                    }
+                }
             }
-
-            // STEP 2: SHORT+MODERATE → LONG
-            val maxLong = getDaysOfType(RunType.LONG).maxOfOrNull { distances[it] ?: 0f } ?: 0f
-            val shortAndModerate = getDaysOfType(RunType.SHORT) + getDaysOfType(RunType.MODERATE)
-            for (day in shortAndModerate) {
-                if (discrepancy <= 0f) break
-                val current = distances[day] ?: 0f
-                addToDay(day, max(0f, maxLong - current))
-            }
-
-            // STEP 3: remaining discrepancy → all runs
-            val allDays =
-                getDaysOfType(RunType.SHORT) + getDaysOfType(RunType.MODERATE) + getDaysOfType(
-                    RunType.LONG
-                )
-            for (day in allDays) {
-                if (discrepancy <= 0f) break
-                addToDay(day, Float.MAX_VALUE) // capped by safeRanges
-            }
-
-            return distances
         } else {
+            // Stepwise lowering: Long → Moderate → Short → All
+            val targets = listOf(
+                longDays to { day: DayOfWeek -> moderateDays.mapNotNull { current(it) }.maxOrNull() ?: current(day) },
+                moderateDays to { day: DayOfWeek -> shortDays.mapNotNull { current(it) }.maxOrNull() ?: current(day) },
+                longDays + moderateDays + shortDays to { day: DayOfWeek -> minSafe(day) }
+            )
 
-            // ---------- REMOVE VOLUME ----------
-            discrepancy = -discrepancy
-
-            // STEP 1: LONG → MODERATE max
-            val maxModerate =
-                getDaysOfType(RunType.MODERATE).maxOfOrNull { distances[it] ?: 0f } ?: 0f
-            for (day in getDaysOfType(RunType.LONG)) {
-                if (discrepancy <= 0f) break
-                val current = distances[day] ?: 0f
-                removeFromDay(day, max(0f, current - maxModerate))
+            for ((days, targetFn) in targets) {
+                for (day in days) {
+                    if (remaining <= 0f) break
+                    val cap = max(targetFn(day), minSafe(day))
+                    val toRemove = minOf(current(day) - cap, remaining)
+                    if (toRemove > 0f) {
+                        distances[day] = current(day) - toRemove
+                        remaining -= toRemove
+                    }
+                }
             }
-
-            // STEP 2: LONG + MODERATE → SHORT max
-            val maxShort = getDaysOfType(RunType.SHORT).maxOfOrNull { distances[it] ?: 0f } ?: 0f
-            val longAndModerate = getDaysOfType(RunType.LONG) + getDaysOfType(RunType.MODERATE)
-            for (day in longAndModerate) {
-                if (discrepancy <= 0f) break
-                val current = distances[day] ?: 0f
-                removeFromDay(day, max(0f, current - maxShort))
-            }
-
-            // STEP 3: remaining discrepancy → all runs down to min
-            val allDays =
-                getDaysOfType(RunType.SHORT) + getDaysOfType(RunType.MODERATE) + getDaysOfType(
-                    RunType.LONG
-                )
-            for (day in allDays) {
-                if (discrepancy <= 0f) break
-                removeFromDay(day, Float.MAX_VALUE) // capped by safeRanges
-            }
-
-            return distances
         }
+
+        return distances
     }
 
 
@@ -279,36 +248,36 @@ class WeeklyTrainingPlanGenerator {
             val moderateCandidates = availableDays
                 .filter { it !in runTypes.keys }
                 .filter { day -> longRunDay == null || !day.isAdjacentTo(longRunDay) }
-                .toMutableList()
+                .toMutableSet()
 
-            val historicalCandidates = moderateCandidates.filter { it in historicalDays }
-                .sortedBy { it.value } // early -> late
-                .toMutableList()
-            val nonHistoricalCandidates = moderateCandidates.filter { it !in historicalDays }
-                .sortedBy { it.value } // early -> late
-                .toMutableList()
-
+            val assignedModerate = runTypes.filter { it.value == RunType.MODERATE }.keys.toMutableList()
             val selectedModerates = mutableListOf<DayOfWeek>()
 
-            // 1. Pick historical candidates alternating early/late to spread
-            var left = 0
-            var right = historicalCandidates.size - 1
-            var pickLeft = true
-            while (selectedModerates.size < moderateRunCount && left <= right && historicalCandidates.isNotEmpty()) {
-                val candidate = if (pickLeft) historicalCandidates[left++] else historicalCandidates[right--]
-                val conflicts = selectedModerates.any { it.isAdjacentTo(candidate) }
-                if (!conflicts) selectedModerates.add(candidate)
-                pickLeft = !pickLeft
-            }
+            repeat(moderateRunCount) {
+                if (moderateCandidates.isEmpty()) return@repeat
 
-            // 2. Fill remaining slots with non-historical candidates alternating early/late
-            left = 0
-            right = nonHistoricalCandidates.size - 1
-            while (selectedModerates.size < moderateRunCount && left <= right) {
-                val candidate = if (pickLeft) nonHistoricalCandidates[left++] else nonHistoricalCandidates[right--]
-                val conflicts = selectedModerates.any { it.isAdjacentTo(candidate) }
-                if (!conflicts) selectedModerates.add(candidate)
-                pickLeft = !pickLeft
+                // Combine already assigned MODERATE runs + LONG runs for gap calculation
+                val sortedAssigned = (assignedModerate + runTypes.keys.filter { it !in assignedModerate }).sortedBy { it.value }
+
+                // Compute gaps
+                val gaps = sortedAssigned.zipWithNext { a, b ->
+                    val gap = (b.value - a.value - 1 + 7) % 7
+                    Pair(a, gap)
+                } + Pair(sortedAssigned.last(), (sortedAssigned.first().value + 7 - sortedAssigned.last().value - 1) % 7) // wrap-around
+
+                // Find largest gap
+                val largestGap = gaps.maxByOrNull { it.second }!!
+                val (gapStart, gapSize) = largestGap
+
+                // Target the middle of the gap
+                val midValue = (gapStart.value + (gapSize + 1) / 2) % 7
+                val midDay = DayOfWeek.of(if (midValue == 0) 7 else midValue)
+
+                // Pick candidate closest to mid
+                val candidate = moderateCandidates.minByOrNull { kotlin.math.abs(it.value - midDay.value) }!!
+                selectedModerates.add(candidate)
+                moderateCandidates.remove(candidate)
+                assignedModerate.add(candidate)
             }
 
             selectedModerates.forEach { runTypes[it] = RunType.MODERATE }
@@ -320,33 +289,49 @@ class WeeklyTrainingPlanGenerator {
             val easyCandidates = availableDays.filter { it !in runTypes.keys }.toMutableSet()
             val selectedEasy = mutableListOf<DayOfWeek>()
 
-            while (selectedEasy.size < remainingSlots && easyCandidates.isNotEmpty()) {
-                val assignedDays = runTypes.keys + selectedEasy
+            // Start with already assigned SHORT runs only
+            val assignedShort = runTypes.filter { it.value == RunType.SHORT }.keys.toMutableList()
 
-                // Compute min distance to assigned days for each candidate
-                val candidateGaps = easyCandidates.groupBy { candidate ->
-                    assignedDays.minOfOrNull { assigned -> distanceInDays(candidate, assigned) } ?: 7
-                }
+            repeat(remainingSlots) {
+                if (easyCandidates.isEmpty()) return@repeat
 
-                // Max gap
-                val maxGap = candidateGaps.keys.maxOrNull() ?: break
+                // Compute gaps between all assigned days (for placement reference)
+                val sortedAssigned = (assignedShort + runTypes.keys.filter { it !in assignedShort }).sortedBy { it.value }
 
-                // Candidates with this gap
-                val bestCandidates = candidateGaps[maxGap]!!
+                val gaps = sortedAssigned.zipWithNext { a, b ->
+                    val gap = (b.value - a.value - 1 + 7) % 7
+                    Pair(a, gap)
+                } + Pair(sortedAssigned.last(), (sortedAssigned.first().value + 7 - sortedAssigned.last().value - 1) % 7) // wrap-around
 
-                // Tie-breaker: alternate early/late selection
-                val pick = if (selectedEasy.size % 2 == 0) {
-                    bestCandidates.minByOrNull { it.value }!! // early
-                } else {
-                    bestCandidates.maxByOrNull { it.value }!! // late
-                }
+                // Find largest gap
+                val largestGap = gaps.maxByOrNull { it.second }!!
+                val (gapStart, gapSize) = largestGap
 
-                selectedEasy.add(pick)
-                easyCandidates.remove(pick)
+                // Target the middle of the gap
+                val midValue = (gapStart.value + (gapSize + 1) / 2) % 7
+                val midDay = DayOfWeek.of(if (midValue == 0) 7 else midValue)
+
+                // Pick candidate closest to mid that is not adjacent to any already assigned SHORT run
+                val candidate = easyCandidates
+                    .filter { cand ->
+                        assignedShort.none { a ->
+                            val diff = kotlin.math.abs(a.value - cand.value)
+                            diff == 1 || diff == 6
+                        }
+                    }
+                    .minByOrNull { kotlin.math.abs(it.value - midDay.value) }
+                    ?: easyCandidates.first() // fallback if no candidate is non-adjacent
+
+                selectedEasy.add(candidate)
+                easyCandidates.remove(candidate)
+                assignedShort.add(candidate)
             }
 
             selectedEasy.forEach { runTypes[it] = RunType.SHORT }
         }
+
+
+
 
         return runTypes
     }
