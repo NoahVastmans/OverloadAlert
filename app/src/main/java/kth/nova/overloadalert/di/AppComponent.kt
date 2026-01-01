@@ -93,7 +93,6 @@ class AppComponent(context: Context) {
     }
 
     // --- Google Calendar Network Stack ---
-    // We create a separate OkHttpClient/Retrofit for Google Calendar because it uses a different base URL and token.
     private val googleOkHttpClient by lazy {
         OkHttpClient.Builder()
             .addInterceptor { chain ->
@@ -111,7 +110,7 @@ class AppComponent(context: Context) {
     }
 
     private val googleRetrofit = Retrofit.Builder()
-        .baseUrl("https://www.googleapis.com/") // Base URL for Google APIs
+        .baseUrl("https://www.googleapis.com/calendar/v3/") // Correct Base URL for Calendar API v3
         .client(googleOkHttpClient)
         .addConverterFactory(MoshiConverterFactory.create(moshi))
         .build()
@@ -175,7 +174,6 @@ class AppComponent(context: Context) {
         PlanViewModel.provideFactory(planRepository)
     }
     val preferencesViewModelFactory: ViewModelProvider.Factory by lazy {
-        // Updated Factory creation for new dependencies
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
@@ -185,8 +183,6 @@ class AppComponent(context: Context) {
     }
 
     init {
-        // Eagerly launch a collector for the plan. This acts as a permanent subscriber,
-        // keeping the upstream flow active and ensuring the plan is always ready.
         planRepository.latestPlan.launchIn(appScope)
     }
 }

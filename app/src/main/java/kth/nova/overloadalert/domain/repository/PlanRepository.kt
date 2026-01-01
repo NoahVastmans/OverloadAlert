@@ -1,5 +1,6 @@
 package kth.nova.overloadalert.domain.repository
 
+import android.util.Log
 import kth.nova.overloadalert.data.RunningRepository
 import kth.nova.overloadalert.data.local.PlanStorage
 import kth.nova.overloadalert.domain.model.AcwrRiskLevel
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -196,4 +198,15 @@ class PlanRepository(
         started = SharingStarted.Lazily,
         initialValue = null
     )
+
+    suspend fun syncCalendar() {
+        Log.d("PlanRepository", "Manual sync initiated.")
+        val currentPlan = latestPlan.value
+        if (currentPlan != null) {
+            Log.d("PlanRepository", "Found a plan to sync.")
+            calendarSyncService.syncPlanToCalendar(currentPlan)
+        } else {
+            Log.w("PlanRepository", "Manual sync requested, but no plan is available.")
+        }
+    }
 }

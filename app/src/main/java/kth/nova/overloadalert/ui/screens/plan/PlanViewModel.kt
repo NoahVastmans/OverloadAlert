@@ -1,5 +1,6 @@
 package kth.nova.overloadalert.ui.screens.plan
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -10,9 +11,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 class PlanViewModel(
-    planRepository: PlanRepository // The new single source of truth for the plan
+    private val planRepository: PlanRepository // The new single source of truth for the plan
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PlanUiState())
@@ -30,6 +32,13 @@ class PlanViewModel(
                 }
             }
             .launchIn(viewModelScope)
+    }
+
+    fun syncCalendar() {
+        Log.d("PlanViewModel", "Manual sync requested.")
+        viewModelScope.launch {
+            planRepository.syncCalendar()
+        }
     }
 
     companion object {

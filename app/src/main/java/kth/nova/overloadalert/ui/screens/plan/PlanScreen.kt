@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Hotel
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.Straight
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -92,6 +93,15 @@ fun PlanScreen(appComponent: AppComponent) {
                             style = MaterialTheme.typography.headlineMedium,
                             modifier = Modifier.weight(1f)
                         )
+
+                        // Manual Sync Button
+                        IconButton(onClick = { viewModel.syncCalendar() }) {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = "Sync to Calendar",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
 
                         IconButton(onClick = { showInfoDialog = true }) {
                             Icon(
