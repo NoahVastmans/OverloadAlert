@@ -6,6 +6,7 @@ import kth.nova.overloadalert.domain.model.AcwrRiskLevel
 import kth.nova.overloadalert.domain.model.RiskLevel
 import kth.nova.overloadalert.domain.plan.*
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
+import kth.nova.overloadalert.domain.usecases.CalendarSyncService
 import kth.nova.overloadalert.domain.usecases.HistoricalDataAnalyzer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -14,19 +15,21 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.temporal.ChronoUnit
 
 class PlanRepository(
     analysisRepository: AnalysisRepository,
-    preferencesRepository: PreferencesRepository,
+    private val preferencesRepository: PreferencesRepository,
     private val planStorage: PlanStorage,
     runningRepository: RunningRepository,
     historicalDataAnalyzer: HistoricalDataAnalyzer,
     planGenerator: WeeklyTrainingPlanGenerator,
     analyzeRunData: AnalyzeRunData,
-    coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.Default)
+    private val calendarSyncService: CalendarSyncService,
+    private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.Default)
 ) {
 
     val latestPlan: StateFlow<WeeklyTrainingPlan?> = combine(
@@ -180,6 +183,12 @@ class PlanRepository(
         // Pass the clean runs and the analyzer to the generator
         val newPlan = planGenerator.generate(planInput, runsForPlanning, analyzeRunData)
         planStorage.savePlan(newPlan)
+        
+        // Trigger Sync
+        coroutineScope.launch {
+            calendarSyncService.syncPlanToCalendar(newPlan)
+        }
+        
         newPlan
 
     }.stateIn(

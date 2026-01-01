@@ -1,6 +1,10 @@
 package kth.nova.overloadalert.ui.screens.preferences
 
+import android.app.Activity
+import android.util.Log
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +30,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -58,6 +63,23 @@ fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {
     var showDiscardDialog by remember { mutableStateOf(false) }
     var infoDialogText by remember { mutableStateOf<String?>(null) }
     var showInvalidPlanDialog by remember { mutableStateOf(false) }
+
+    // Google Sign-In Launcher
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.let { intent ->
+                viewModel.handleSignInResult(intent)
+            }
+        } else {
+            Log.e("PreferencesScreen", "Google Sign-In failed or cancelled. ResultCode: ${result.resultCode}")
+            // Still try to handle it to get error details from the intent if possible
+            result.data?.let { intent ->
+                viewModel.handleSignInResult(intent)
+            }
+        }
+    }
 
     // Check plan validity when uiState changes
     LaunchedEffect(uiState.isPlanValid, uiState.isLoading) {
@@ -100,8 +122,9 @@ fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {
                 Text(
                     "The current settings prevent a valid training plan from being generated.\n\n" +
                     "Possible reasons:\n" +
+                    "• More runs requested than available days\n" +
                     "• All preferred long run days are forbidden\n" +
-                    "• Too many forbidden days selected for the chosen maximal days per week"
+                    "• Too many forbidden days selected"
                 ) 
             },
             confirmButton = {
@@ -204,6 +227,46 @@ fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {
                     .padding(paddingValues)
                     .padding(16.dp)
             ) {
+                // --- Google Calendar Connection ---
+                PreferenceHeader(
+                    title = "Google Calendar",
+                    onInfoClick = {
+                        infoDialogText = "Connect to sync your training plan with your Google Calendar."
+                    }
+                )
+                
+                if (uiState.isGoogleConnected) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Connected to Google Calendar",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        OutlinedButton(
+                            onClick = { viewModel.signOut() }
+                        ) {
+                            Text("Disconnect")
+                        }
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = {
+                            val intent = viewModel.getGoogleSignInIntent()
+                            googleSignInLauncher.launch(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Connect to Google Calendar")
+                    }
+                }
+                
+                Spacer(Modifier.height(24.dp))
+                // ----------------------------------
+
                 PreferenceHeader(
                     title = "Maximum Runs Per Week: ${uiState.preferences.maxRunsPerWeek}",
                     onInfoClick = {

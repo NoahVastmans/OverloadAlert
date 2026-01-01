@@ -99,6 +99,9 @@ dependencies {
     // Chart
     implementation(libs.mpandroidchart)
 
+    // Google Service
+    implementation(libs.google.play.service.auth)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
