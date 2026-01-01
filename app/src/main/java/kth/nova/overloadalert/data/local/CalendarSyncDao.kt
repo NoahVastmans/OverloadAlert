@@ -4,7 +4,6 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface CalendarSyncDao {
@@ -16,4 +15,7 @@ interface CalendarSyncDao {
 
     @Query("DELETE FROM calendar_sync WHERE date = :date")
     suspend fun deleteSyncEntity(date: String)
+
+    @Query("DELETE FROM calendar_sync")
+    suspend fun clearAll()
 }

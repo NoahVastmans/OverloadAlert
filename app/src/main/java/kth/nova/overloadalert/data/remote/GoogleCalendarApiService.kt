@@ -6,28 +6,43 @@ import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
-import retrofit2.http.Query
 
 interface GoogleCalendarApiService {
 
-    @POST("calendars/primary/events")
+    // --- Calendar Methods ---
+
+    @GET("users/me/calendarList")
+    suspend fun getCalendarList(): GoogleCalendarList
+
+    @POST("calendars")
+    suspend fun createCalendar(
+        @Body calendar: GoogleCalendar
+    ): GoogleCalendar
+
+    // --- Event Methods ---
+
+    @POST("calendars/{calendarId}/events")
     suspend fun createEvent(
+        @Path("calendarId") calendarId: String,
         @Body event: GoogleCalendarEvent
     ): GoogleCalendarEvent
 
-    @PATCH("calendars/primary/events/{eventId}")
+    @PATCH("calendars/{calendarId}/events/{eventId}")
     suspend fun patchEvent(
+        @Path("calendarId") calendarId: String,
         @Path("eventId") eventId: String,
         @Body event: GoogleCalendarEvent
     ): GoogleCalendarEvent
 
-    @GET("calendars/primary/events/{eventId}")
+    @GET("calendars/{calendarId}/events/{eventId}")
     suspend fun getEvent(
+        @Path("calendarId") calendarId: String,
         @Path("eventId") eventId: String
     ): GoogleCalendarEvent
 
-    @DELETE("calendars/primary/events/{eventId}")
+    @DELETE("calendars/{calendarId}/events/{eventId}")
     suspend fun deleteEvent(
+        @Path("calendarId") calendarId: String,
         @Path("eventId") eventId: String
     )
 }

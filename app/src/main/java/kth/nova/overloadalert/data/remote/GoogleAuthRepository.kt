@@ -30,10 +30,6 @@ class GoogleAuthRepository(
     private val signInOptions = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
         .requestEmail()
         .requestScopes(scopeCalendar, scopeCalendarEvents)
-        // Removed requestServerAuthCode. 
-        // For client-side flow (GoogleAuthUtil), we do not need to request a server code.
-        // The app's SHA-1 fingerprint registered in the Google Cloud Console is sufficient 
-        // to authorize the Android Client ID.
         .build()
 
     private val googleSignInClient: GoogleSignInClient = GoogleSignIn.getClient(context, signInOptions)
@@ -50,12 +46,10 @@ class GoogleAuthRepository(
             handleAccount(account)
             true
         } catch (e: ApiException) {
-            // Error 10 (DEVELOPER_ERROR) usually means SHA-1 mismatch in Google Cloud Console
-            Log.e("GoogleAuthRepo", "SignIn Result Failed. Status Code: ${e.statusCode}", e)
+            Log.e("GoogleAuthRepo", "SignIn Result Failed: ${e.statusCode}", e)
             false
         } catch (e: Exception) {
             Log.e("GoogleAuthRepo", "SignIn Handler Error", e)
-            e.printStackTrace()
             false
         }
     }
@@ -63,24 +57,33 @@ class GoogleAuthRepository(
     private suspend fun handleAccount(account: GoogleSignInAccount) {
         withContext(Dispatchers.IO) {
             try {
-                // Fetch the token directly using GoogleAuthUtil (Synchronous call, must be on BG thread)
                 val scopes = "oauth2:https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events"
                 val accountObj = account.account ?: return@withContext
                 
                 val token = GoogleAuthUtil.getToken(context, accountObj, scopes)
                 Log.d("GoogleAuthRepo", "Access Token retrieved successfully")
                 
-                // Store the token
                 googleTokenManager.saveAccessToken(token)
                 
-            } catch (e: UserRecoverableAuthException) {
-                // This exception is thrown when the user needs to grant consent (again) or take action.
-                Log.e("GoogleAuthRepo", "UserRecoverableAuthException: ${e.message}")
-                e.printStackTrace()
             } catch (e: Exception) {
-                Log.e("GoogleAuthRepo", "Failed to get token", e)
-                e.printStackTrace()
+                Log.e("GoogleAuthRepo", "Failed to get token during handleAccount", e)
             }
+        }
+    }
+
+    suspend fun getNewAccessToken(): String? = withContext(Dispatchers.IO) {
+        val account = getLastSignedInAccount() ?: return@withContext null
+        try {
+            val scopes = "oauth2:https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events"
+            val token = GoogleAuthUtil.getToken(context, account.account!!, scopes)
+            Log.d("GoogleAuthRepo", "Access Token refreshed successfully")
+            return@withContext token
+        } catch (e: UserRecoverableAuthException) {
+            Log.e("GoogleAuthRepo", "Could not refresh token, user action required.", e)
+            return@withContext null
+        } catch (e: Exception) {
+            Log.e("GoogleAuthRepo", "Error refreshing access token", e)
+            return@withContext null
         }
     }
 
@@ -89,7 +92,7 @@ class GoogleAuthRepository(
             googleSignInClient.signOut().await()
             googleTokenManager.clearTokens()
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("GoogleAuthRepo", "Error during sign out", e)
         }
     }
     
@@ -98,7 +101,7 @@ class GoogleAuthRepository(
     }
 }
 
-// Extension function to replace kotlinx-coroutines-play-services functionality
+// Custom await extension to avoid dependency on play-services-tasks-ktx
 private suspend fun <T> Task<T>.await(): T {
     if (isComplete) {
         val e = exception

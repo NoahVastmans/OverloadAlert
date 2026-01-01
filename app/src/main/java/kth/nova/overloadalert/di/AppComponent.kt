@@ -14,6 +14,7 @@ import kth.nova.overloadalert.data.local.PlanStorage
 import kth.nova.overloadalert.data.remote.GoogleAuthRepository
 import kth.nova.overloadalert.data.remote.GoogleCalendarApiService
 import kth.nova.overloadalert.data.remote.GoogleCalendarRepository
+import kth.nova.overloadalert.data.remote.GoogleTokenAuthenticator
 import kth.nova.overloadalert.data.remote.GoogleTokenManager
 import kth.nova.overloadalert.data.remote.StravaApiService
 import kth.nova.overloadalert.data.remote.StravaAuthService
@@ -92,9 +93,15 @@ class AppComponent(context: Context) {
         authenticatedRetrofit.create(StravaApiService::class.java)
     }
 
+    // --- Repositories (needed for Google Authenticator) ---
+    val googleAuthRepository: GoogleAuthRepository by lazy { GoogleAuthRepository(context, googleTokenManager) }
+
     // --- Google Calendar Network Stack ---
+    private val googleTokenAuthenticator by lazy { GoogleTokenAuthenticator(googleAuthRepository, googleTokenManager) }
+
     private val googleOkHttpClient by lazy {
         OkHttpClient.Builder()
+            .authenticator(googleTokenAuthenticator) // Add the authenticator here
             .addInterceptor { chain ->
                 val token = googleTokenManager.getAccessToken()
                 val request = if (token != null) {
@@ -134,7 +141,7 @@ class AppComponent(context: Context) {
 
     // --- Repositories ---
     val authRepository: AuthRepository by lazy { AuthRepository(stravaAuthService, tokenManager) }
-    val googleAuthRepository: GoogleAuthRepository by lazy { GoogleAuthRepository(context, googleTokenManager) }
+    // googleAuthRepository is already defined above
     val runningRepository: RunningRepository by lazy { RunningRepository(appDatabase.runDao(), stravaApiService, tokenManager) }
     val googleCalendarRepository: GoogleCalendarRepository by lazy { GoogleCalendarRepository(googleCalendarApiService) }
     val preferencesRepository: PreferencesRepository by lazy { PreferencesRepository(context) }
@@ -144,7 +151,7 @@ class AppComponent(context: Context) {
     private val historicalDataAnalyzer: HistoricalDataAnalyzer by lazy { HistoricalDataAnalyzer() }
     private val weeklyTrainingPlanGenerator: WeeklyTrainingPlanGenerator by lazy { WeeklyTrainingPlanGenerator() }
     private val calendarSyncService: CalendarSyncService by lazy { 
-        CalendarSyncService(appDatabase.calendarSyncDao(), googleCalendarRepository, googleAuthRepository) 
+        CalendarSyncService(appDatabase.calendarSyncDao(), googleCalendarRepository, googleAuthRepository, planStorage) 
     }
 
     // --- Composite Repositories ---

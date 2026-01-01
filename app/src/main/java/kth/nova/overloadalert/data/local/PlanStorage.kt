@@ -45,8 +45,19 @@ class PlanStorage(context: Context, moshi: Moshi) {
         }
     }
 
+    // --- Dedicated Calendar Storage ---
+
+    fun saveCalendarId(id: String) {
+        sharedPreferences.edit().putString(KEY_CALENDAR_ID, id).apply()
+    }
+
+    fun loadCalendarId(): String? {
+        return sharedPreferences.getString(KEY_CALENDAR_ID, null)
+    }
+
     companion object {
         private const val KEY_PLAN = "weekly_training_plan"
         private const val KEY_OVERRIDE = "risk_override"
+        private const val KEY_CALENDAR_ID = "google_calendar_id"
     }
 }
