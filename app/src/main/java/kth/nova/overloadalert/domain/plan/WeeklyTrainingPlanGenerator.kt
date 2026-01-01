@@ -27,10 +27,18 @@ class WeeklyTrainingPlanGenerator {
         val weeklyVolume = calculateWeeklyVolume(input)
 
         var dailyDistances = distributeLoad(runTypes, weeklyVolume, input)
+        var twoBack: Map<DayOfWeek, Float>? = null
 
         if (input.recentData.riskPhase != RiskPhase.DELOAD) {
-            val (validatedDistances, safeRanges) = validateAndAdjustPlan(dailyDistances.toMutableMap(), allRuns, analyzeRunData)
-            dailyDistances = rebalanceVolume(validatedDistances.toMutableMap(), weeklyVolume, runTypes, safeRanges)
+            for (i in 0 until 10) {
+                val before = dailyDistances.toMap()
+                val (validatedDistances, safeRanges) = validateAndAdjustPlan(dailyDistances.toMutableMap(), allRuns, analyzeRunData)
+                dailyDistances = rebalanceVolume(validatedDistances.toMutableMap(), weeklyVolume, runTypes, safeRanges)
+
+                if (maxDelta(dailyDistances, before) < 0.1) {break}
+                if (twoBack != null && maxDelta(dailyDistances, twoBack) < 0.1f) {break}
+                twoBack = before
+            }
         }
 
         // Generate daily plans for 7 days starting from today
@@ -55,6 +63,17 @@ class WeeklyTrainingPlanGenerator {
             userPreferences = input.userPreferences
         )
     }
+
+    fun maxDelta(a: Map<DayOfWeek, Float>, b: Map<DayOfWeek, Float>): Float {
+        if (a.keys != b.keys) return Float.MAX_VALUE
+
+        return a.keys.maxOf { day ->
+            val va: Float = a[day] ?: 0f
+            val vb: Float = b[day] ?: 0f
+            abs(va - vb)
+        }
+    }
+
 
     private fun shouldRecomputeStructure(input: PlanInput, runsForPlanning: List<Run>, today: LocalDate): Boolean {
         val prev = input.previousPlan ?: return true // No previous plan, must compute
