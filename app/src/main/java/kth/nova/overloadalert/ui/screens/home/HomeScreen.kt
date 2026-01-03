@@ -1,13 +1,21 @@
 package kth.nova.overloadalert.ui.screens.home
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
@@ -35,7 +43,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -43,9 +53,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kth.nova.overloadalert.R
+import kth.nova.overloadalert.domain.model.CombinedRisk
 import kth.nova.overloadalert.domain.model.RunAnalysis
 import kotlinx.coroutines.delay
-import kth.nova.overloadalert.domain.model.CombinedRisk
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,12 +82,16 @@ fun HomeScreen(viewModel: HomeViewModel, onNavigateToPreferences: () -> Unit) {
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets.systemBars.only(WindowInsetsSides.Top),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { 
                     Column {
-                        Text("Overload Alert")
+                        Text(
+                            text = "Overload Alert",
+                            style = MaterialTheme.typography.headlineMedium
+                        )
                         uiState.lastSyncTime?.let {
                             if (it > 0) {
                                 val minutesAgo = (currentTime - it) / 60000
@@ -101,17 +116,17 @@ fun HomeScreen(viewModel: HomeViewModel, onNavigateToPreferences: () -> Unit) {
                     IconButton(onClick = { viewModel.refreshData() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh Data")
                     }
-                    IconButton(onClick = { showInfoDialog = true }) { // <-- Info button
+                    IconButton(onClick = { showInfoDialog = true }) {
                         Icon(Icons.Default.Info, contentDescription = "Info")
                     }
                 }
             )
         }
-    ) {
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(it)
+                .padding(paddingValues)
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -121,6 +136,23 @@ fun HomeScreen(viewModel: HomeViewModel, onNavigateToPreferences: () -> Unit) {
                 RunAnalysisCard(uiState.runAnalysis!!)
             } else {
                 Text("No data available. Please sync with Strava.")
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(vertical = 16.dp, horizontal = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.powered_by_strava),
+                    contentDescription = "Powered by Strava"
+                )
             }
         }
     }
@@ -166,7 +198,8 @@ fun RunAnalysisCard(analysis: RunAnalysis) {
 
     // Prescriptive Metrics Card
     Card(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Recommendations", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)

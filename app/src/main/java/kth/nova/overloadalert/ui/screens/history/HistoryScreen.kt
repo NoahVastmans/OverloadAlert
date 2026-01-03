@@ -2,13 +2,19 @@ package kth.nova.overloadalert.ui.screens.history
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,8 +22,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -47,7 +54,10 @@ fun HistoryScreen(viewModel: HistoryViewModel) {
     var showInfoDialog by remember { mutableStateOf(false) }
     var showRiskDialog by remember { mutableStateOf<CombinedRisk?>(null) }
 
-    Scaffold { paddingValues ->
+    Scaffold(
+            contentWindowInsets = WindowInsets.systemBars
+                .only(WindowInsetsSides.Top)
+            ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -58,7 +68,7 @@ fun HistoryScreen(viewModel: HistoryViewModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0f))
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -69,8 +79,7 @@ fun HistoryScreen(viewModel: HistoryViewModel) {
                 IconButton(onClick = { showInfoDialog = true }) {
                     Icon(
                         imageVector = Icons.Default.Info,
-                        contentDescription = "History Info",
-                        tint = Color.Gray
+                        contentDescription = "History Info"
                     )
                 }
             }
@@ -97,13 +106,16 @@ fun HistoryScreen(viewModel: HistoryViewModel) {
                     }
                 }
                 else -> {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp)
+                    ) {
                         items(uiState.analyzedRuns) { analyzedRun ->
                             RunHistoryItem(
                                 analyzedRun = analyzedRun,
                                 onRiskClick = { showRiskDialog = it }
                             )
-                            HorizontalDivider()
+                            Spacer(modifier = Modifier.padding(4.dp))
                         }
                     }
                 }
@@ -144,33 +156,38 @@ fun RunHistoryItem(analyzedRun: AnalyzedRun, onRiskClick: (CombinedRisk) -> Unit
     val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy")
     val runDate = OffsetDateTime.parse(run.startDateLocal).format(dateFormatter)
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
-        // Date and Risk Tag
-        Column(horizontalAlignment = Alignment.Start, modifier = Modifier.weight(1f)) {
-            Text(text = runDate, fontSize = 16.sp)
-            RiskTag(risk = risk, onClick = { onRiskClick(risk) })
-        }
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Date and Risk Tag
+            Column(horizontalAlignment = Alignment.Start, modifier = Modifier.weight(1f)) {
+                Text(text = runDate, fontSize = 16.sp)
+                RiskTag(risk = risk, onClick = { onRiskClick(risk) })
+            }
 
-        Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(16.dp))
 
-        // Distance and Time
-        Column(horizontalAlignment = Alignment.End) {
-            val distanceInKm = run.distance / 1000f
-            Text(text = String.format("%.2f km", distanceInKm), fontSize = 16.sp)
+            // Distance and Time
+            Column(horizontalAlignment = Alignment.End) {
+                val distanceInKm = run.distance / 1000f
+                Text(text = String.format("%.2f km", distanceInKm), fontSize = 16.sp)
 
-            val hours = run.movingTime / 3600
-            val minutes = (run.movingTime % 3600) / 60
-            val seconds = run.movingTime % 60
-            Text(
-                text = String.format("%d:%02d:%02d", hours, minutes, seconds),
-                fontSize = 14.sp,
-                color = Color.Gray
-            )
+                val hours = run.movingTime / 3600
+                val minutes = (run.movingTime % 3600) / 60
+                val seconds = run.movingTime % 60
+                Text(
+                    text = String.format("%d:%02d:%02d", hours, minutes, seconds),
+                    fontSize = 14.sp,
+                    color = Color.Gray
+                )
+            }
         }
     }
 }

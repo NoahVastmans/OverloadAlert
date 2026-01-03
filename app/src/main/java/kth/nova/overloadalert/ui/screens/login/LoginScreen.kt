@@ -2,6 +2,8 @@ package kth.nova.overloadalert.ui.screens.login
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,10 +21,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import kth.nova.overloadalert.R
 
 @Composable
 fun LoginScreen(viewModel: AuthViewModel) {
@@ -57,25 +61,22 @@ fun LoginScreen(viewModel: AuthViewModel) {
             )
 
             // ---------- ACTION BUTTON ----------
-            Button(
-                onClick = {
-                    if (uiState.authUrl.isNotBlank()) {
-                        val intent = Intent(
-                            Intent.ACTION_VIEW,
-                            uiState.authUrl.toUri()
-                        )
-                        context.startActivity(intent)
-                    }
-                },
+            Image(
+                painter = painterResource(id = R.drawable.btn_strava_connect_orange),
+                contentDescription = "Connect with Strava",
                 modifier = Modifier
                     .fillMaxWidth(0.8f)
                     .height(48.dp)
-            ) {
-                Text(
-                    text = "Connect with Strava",
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
+                    .clickable {
+                        if (uiState.authUrl.isNotBlank()) {
+                            val intent = Intent(
+                                Intent.ACTION_VIEW,
+                                uiState.authUrl.toUri()
+                            )
+                            context.startActivity(intent)
+                        }
+                    }
+            )
         }
     }
 }
@@ -109,14 +110,14 @@ fun LoginScreenPreview() {
                     modifier = Modifier.padding(bottom = 24.dp)
                 )
 
-                Button(
-                    onClick = {},
+                Image(
+                    painter = painterResource(id = R.drawable.btn_strava_connect_orange),
+                    contentDescription = "Connect with Strava",
                     modifier = Modifier
                         .fillMaxWidth(0.8f)
                         .height(48.dp)
-                ) {
-                    Text("Connect with Strava")
-                }
+                        .clickable { }
+                )
             }
         }
     }

@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,8 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -38,7 +41,6 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -125,23 +127,6 @@ fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "Training Preferences",
-                            modifier = Modifier.weight(1f)
-                        )
-                        IconButton(
-                            onClick = { infoDialogText = "These preferences control how your training plan is generated. They influence weekly volume, progression speed, and rest days." }
-                        ) {
-                            Icon(imageVector = Icons.Default.Info, contentDescription = "Preferences Info", tint = Color.Gray)
-                        }
-                    }
-                }
-            )
-        },
         bottomBar = {
             Surface(shadowElevation = 8.dp) {
                 Button(
@@ -174,67 +159,104 @@ fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
             ) {
-                if (uiState.preferences.isPremium) {
-                    PreferenceHeader(title = "Google Calendar", onInfoClick = { infoDialogText = "Connect to sync your training plan with your Google Calendar." })
-                    if (uiState.isGoogleConnected) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Connected to Google Calendar", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-                            OutlinedButton(onClick = { viewModel.signOut() }) { Text("Disconnect") }
-                        }
-                    } else {
-                        OutlinedButton(
-                            onClick = { googleSignInLauncher.launch(viewModel.getGoogleSignInIntent()) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Connect to Google Calendar") }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Training Preferences",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = { infoDialogText = "These preferences control how your training plan is generated. They influence weekly volume, progression speed, and rest days." }
+                    ) {
+                        Icon(imageVector = Icons.Default.Info, contentDescription = "Preferences Info")
                     }
-                    Spacer(Modifier.height(24.dp))
                 }
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp)
+                ) {
+                    if (uiState.preferences.isPremium) {
+                        PreferenceCard(title = "Google Calendar", onInfoClick = { infoDialogText = "Connect to sync your training plan with your Google Calendar." }) {
+                            if (uiState.isGoogleConnected) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Connected to Google Calendar", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                                    OutlinedButton(onClick = { viewModel.signOut() }) { Text("Disconnect") }
+                                }
+                            } else {
+                                OutlinedButton(
+                                    onClick = { googleSignInLauncher.launch(viewModel.getGoogleSignInIntent()) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Connect to Google Calendar") }
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                    }
 
-                PreferenceHeader(title = "Maximum Runs Per Week: ${uiState.preferences.maxRunsPerWeek}", onInfoClick = { infoDialogText = "Limits how many runs you perform per week. This helps control fatigue and injury risk." })
-                Slider(
-                    value = uiState.preferences.maxRunsPerWeek.toFloat(),
-                    onValueChange = { viewModel.onPreferencesChanged(uiState.preferences.copy(maxRunsPerWeek = it.roundToInt())) },
-                    valueRange = 1f..7f,
-                    steps = 5
-                )
-                Spacer(Modifier.height(24.dp))
-                PreferenceHeader(title = "Progression Rate", onInfoClick = { infoDialogText = "Controls how quickly training volume increases over time. Slower progression reduces injury risk." })
-                ProgressionRateSelector(uiState.preferences.progressionRate) { viewModel.onPreferencesChanged(uiState.preferences.copy(progressionRate = it)) }
-                Spacer(Modifier.height(24.dp))
-                PreferenceHeader(title = "Preferred Long Run Days", onInfoClick = { infoDialogText = "Select days where long runs are preferred. The plan will try to schedule long runs on these days." })
-                DayOfWeekSelector(selectedDays = uiState.preferences.preferredLongRunDays) { day ->
-                    val newDays = uiState.preferences.preferredLongRunDays.toMutableSet()
-                    if (day in newDays) newDays.remove(day) else newDays.add(day)
-                    viewModel.onPreferencesChanged(uiState.preferences.copy(preferredLongRunDays = newDays))
+                    PreferenceCard(title = "Maximum Runs Per Week: ${uiState.preferences.maxRunsPerWeek}", onInfoClick = { infoDialogText = "Limits how many runs you perform per week. This helps control fatigue and injury risk." }) {
+                        Slider(
+                            value = uiState.preferences.maxRunsPerWeek.toFloat(),
+                            onValueChange = { viewModel.onPreferencesChanged(uiState.preferences.copy(maxRunsPerWeek = it.roundToInt())) },
+                            valueRange = 1f..7f,
+                            steps = 5
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+
+                    PreferenceCard(title = "Progression Rate", onInfoClick = { infoDialogText = "Controls how quickly training volume increases over time. Slower progression reduces injury risk." }) {
+                        ProgressionRateSelector(uiState.preferences.progressionRate) { viewModel.onPreferencesChanged(uiState.preferences.copy(progressionRate = it)) }
+                    }
+                    Spacer(Modifier.height(16.dp))
+
+                    PreferenceCard(title = "Preferred Long Run Days", onInfoClick = { infoDialogText = "Select days where long runs are preferred. The plan will try to schedule long runs on these days." }) {
+                        DayOfWeekSelector(selectedDays = uiState.preferences.preferredLongRunDays) { day ->
+                            val newDays = uiState.preferences.preferredLongRunDays.toMutableSet()
+                            if (day in newDays) newDays.remove(day) else newDays.add(day)
+                            viewModel.onPreferencesChanged(uiState.preferences.copy(preferredLongRunDays = newDays))
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+
+                    PreferenceCard(title = "Forbidden Run Days", onInfoClick = { infoDialogText = "Runs will never be scheduled on these days. Useful for work, rest, or recovery days." }) {
+                        DayOfWeekSelector(selectedDays = uiState.preferences.forbiddenRunDays) { day ->
+                            val newDays = uiState.preferences.forbiddenRunDays.toMutableSet()
+                            if (day in newDays) newDays.remove(day) else newDays.add(day)
+                            viewModel.onPreferencesChanged(uiState.preferences.copy(forbiddenRunDays = newDays))
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
                 }
-                Spacer(Modifier.height(24.dp))
-                PreferenceHeader(title = "Forbidden Run Days", onInfoClick = { infoDialogText = "Runs will never be scheduled on these days. Useful for work, rest, or recovery days." })
-                DayOfWeekSelector(selectedDays = uiState.preferences.forbiddenRunDays) { day ->
-                    val newDays = uiState.preferences.forbiddenRunDays.toMutableSet()
-                    if (day in newDays) newDays.remove(day) else newDays.add(day)
-                    viewModel.onPreferencesChanged(uiState.preferences.copy(forbiddenRunDays = newDays))
-                }
-                Spacer(Modifier.height(80.dp))
             }
         }
     }
 }
 
 @Composable
-private fun PreferenceHeader(title: String, onInfoClick: () -> Unit) {
-    Row(
+private fun PreferenceCard(title: String, onInfoClick: () -> Unit, content: @Composable () -> Unit) {
+    Card(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
-        Text(text = title, style = MaterialTheme.typography.titleMedium)
-        IconButton(onClick = onInfoClick) { Icon(Icons.Default.Info, contentDescription = "Info", tint = Color.Gray) }
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                IconButton(onClick = onInfoClick) { Icon(Icons.Default.Info, contentDescription = "Info") }
+            }
+            Spacer(Modifier.height(8.dp))
+            content()
+        }
     }
 }
 
@@ -243,7 +265,14 @@ private fun PreferenceHeader(title: String, onInfoClick: () -> Unit) {
 private fun ProgressionRateSelector(selectedRate: ProgressionRate, onRateClick: (ProgressionRate) -> Unit) {
     FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         ProgressionRate.values().forEach { rate ->
-            FilterChip(selected = selectedRate == rate, onClick = { onRateClick(rate) }, label = { Text(rate.name.lowercase().replaceFirstChar { it.uppercase() }) })
+            val isSelected = rate == selectedRate
+            FilterChip(
+                selected = isSelected,
+                onClick = { onRateClick(rate) },
+                label = { Text(rate.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                leadingIcon = if (isSelected) { { Icon(Icons.Default.Check, contentDescription = null) } } else null,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            )
         }
     }
 }
@@ -258,7 +287,8 @@ private fun DayOfWeekSelector(selectedDays: Set<DayOfWeek>, onDayClick: (DayOfWe
                 selected = isSelected,
                 onClick = { onDayClick(day) },
                 label = { Text(day.name.take(3)) },
-                leadingIcon = if (isSelected) { { Icon(Icons.Default.Check, contentDescription = null) } } else null
+                leadingIcon = if (isSelected) { { Icon(Icons.Default.Check, contentDescription = null) } } else null,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             )
         }
     }

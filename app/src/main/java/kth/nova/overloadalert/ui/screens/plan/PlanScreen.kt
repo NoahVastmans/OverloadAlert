@@ -4,12 +4,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -25,6 +30,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -59,87 +65,90 @@ fun PlanScreen(appComponent: AppComponent) {
     val planTitle = PlanTitle(plan?.riskPhase, plan?.progressionRate)
     val isPremium = uiState.trainingPlan?.userPreferences?.isPremium ?: false
 
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        when {
-            uiState.isLoading -> {
-                CircularProgressIndicator()
-            }
-
-            plan != null -> {
-                val today = LocalDate.now().dayOfWeek
-                val todayIndex = plan.days.indexOfFirst { it.dayOfWeek == today }
-                val rotatedDays = if (todayIndex != -1) {
-                    plan.days.subList(todayIndex, plan.days.size) + plan.days.subList(0, todayIndex)
-                } else {
-                    plan.days
+    Scaffold(
+        contentWindowInsets = WindowInsets.systemBars
+            .only(WindowInsetsSides.Top)
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier.fillMaxSize().padding(paddingValues),
+            contentAlignment = Alignment.Center
+        ) {
+            when {
+                uiState.isLoading -> {
+                    CircularProgressIndicator()
                 }
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .then(if (!isPremium) Modifier.blur(8.dp) else Modifier)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = planTitle,
-                            style = MaterialTheme.typography.headlineMedium,
-                            modifier = Modifier.weight(1f)
-                        )
+                plan != null -> {
+                    val today = LocalDate.now().dayOfWeek
+                    val todayIndex = plan.days.indexOfFirst { it.dayOfWeek == today }
+                    val rotatedDays = if (todayIndex != -1) {
+                        plan.days.subList(todayIndex, plan.days.size) + plan.days.subList(0, todayIndex)
+                    } else {
+                        plan.days
+                    }
 
-                        if (isPremium) {
-                            IconButton(onClick = { 
-                                if (uiState.isGoogleConnected) {
-                                    viewModel.syncCalendar()
-                                } else {
-                                    showNotConnectedDialog = true
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(if (!isPremium) Modifier.blur(8.dp) else Modifier)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = planTitle,
+                                style = MaterialTheme.typography.titleLarge,
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            if (isPremium) {
+                                IconButton(onClick = {
+                                    if (uiState.isGoogleConnected) {
+                                        viewModel.syncCalendar()
+                                    } else {
+                                        showNotConnectedDialog = true
+                                    }
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Sync,
+                                        contentDescription = "Sync to Calendar",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
                                 }
-                            }) {
+                            }
+
+                            IconButton(onClick = { showInfoDialog = true }) {
                                 Icon(
-                                    imageVector = Icons.Default.Sync,
-                                    contentDescription = "Sync to Calendar",
-                                    tint = MaterialTheme.colorScheme.primary
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = "Plan Info"
                                 )
                             }
                         }
 
-                        IconButton(onClick = { showInfoDialog = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = "Plan Info",
-                                tint = Color.Gray
-                            )
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(16.dp)
+                        ) {
+                            items(rotatedDays) { dailyPlan ->
+                                DailyPlanItem(
+                                    plan = dailyPlan,
+                                    isToday = dailyPlan.dayOfWeek == today,
+                                    isRestWeek = dailyPlan.isRestWeek
+                                )
+                                Spacer(modifier = Modifier.padding(4.dp))
+                            }
                         }
                     }
 
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp)
-                    ) {
-                        items(rotatedDays) { dailyPlan ->
-                            DailyPlanItem(
-                                plan = dailyPlan,
-                                isToday = dailyPlan.dayOfWeek == today,
-                                isRestWeek = dailyPlan.isRestWeek
-                            )
-                            Spacer(modifier = Modifier.padding(4.dp))
-                        }
+                    if (!isPremium) {
+                        PaywallOverlay(onUnlock = { viewModel.unlockPremium() })
                     }
+                } else -> {
+                    Text("Not enough data to generate a plan.")
                 }
-
-                if (!isPremium) {
-                    PaywallOverlay(onUnlock = { viewModel.unlockPremium() })
-                }
-            } else -> {
-                Text("Not enough data to generate a plan.")
             }
         }
     }
@@ -185,7 +194,8 @@ fun DailyPlanItem(plan: DailyPlan, isToday: Boolean, isRestWeek: Boolean) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
