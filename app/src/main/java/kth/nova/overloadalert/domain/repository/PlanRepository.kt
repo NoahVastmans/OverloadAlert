@@ -14,8 +14,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -23,42 +26,85 @@ import java.time.OffsetDateTime
 import java.time.temporal.ChronoUnit
 
 class PlanRepository(
-    analysisRepository: AnalysisRepository,
+    private val analysisRepository: AnalysisRepository,
     private val preferencesRepository: PreferencesRepository,
     private val planStorage: PlanStorage,
-    runningRepository: RunningRepository,
-    historicalDataAnalyzer: HistoricalDataAnalyzer,
-    planGenerator: WeeklyTrainingPlanGenerator,
-    analyzeRunData: AnalyzeRunData,
+    private val runningRepository: RunningRepository,
+    private val historicalDataAnalyzer: HistoricalDataAnalyzer,
+    private val planGenerator: WeeklyTrainingPlanGenerator,
+    private val analyzeRunData: AnalyzeRunData,
     private val calendarSyncService: CalendarSyncService,
     private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.Default)
 ) {
 
-    val latestPlan: StateFlow<WeeklyTrainingPlan?> = combine(
-        analysisRepository.latestAnalysis.filterNotNull(),
-        preferencesRepository.preferencesFlow,
-        planStorage.riskOverrideFlow,
-        runningRepository.getAllRuns()
-    ) { analysisData, userPreferences, override, allRuns ->
+    val latestPlan: StateFlow<WeeklyTrainingPlan?> = flow {
+        // 1. Emit the stored plan first
+        emit(planStorage.loadPlan())
 
-        val planningStartDate = LocalDate.now()
+        // 2. Create the generation key flow
+        val generationKeyFlow = combine(
+            preferencesRepository.preferencesFlow,
+            runningRepository.getAllRuns()
+        ) { preferences, allRuns ->
+            val today = LocalDate.now()
+            val runsForPlanning = allRuns.filter {
+                OffsetDateTime.parse(it.startDateLocal).toLocalDate().isBefore(today)
+            }
+            PlanGenerationKey(
+                planningDate = today,
+                userPreferences = preferences,
+                historicalRunsHash = runsForPlanning.hashCode()
+            )
+        }.distinctUntilChanged()
+
+        // 3. Observe the key and decide whether to regenerate
+        generationKeyFlow.flatMapLatest { key ->
+            val storedPlan = planStorage.loadPlan()
+
+            // Decide if regeneration is needed
+            val needsRegeneration = storedPlan == null ||
+                    storedPlan.startDate != key.planningDate ||
+                    storedPlan.userPreferences != key.userPreferences ||
+                    storedPlan.historicalRunsHash != key.historicalRunsHash
+
+            if (needsRegeneration) {
+                Log.d("PlanRepository", "Regeneration needed. Generating new plan.")
+                // Generate and emit the new plan
+                generateAndStorePlan(key)
+            } else {
+                // No change, emit the stored plan again
+                Log.d("PlanRepository", "No regeneration needed. Emitting stored plan.")
+                flow { emit(storedPlan) }
+            }
+        }.collect { emit(it) }
+
+    }.stateIn(
+        scope = coroutineScope,
+        started = SharingStarted.Lazily,
+        initialValue = planStorage.loadPlan() // Start with the stored plan immediately
+    )
+
+    private suspend fun generateAndStorePlan(key: PlanGenerationKey): StateFlow<WeeklyTrainingPlan?> {
+        // This logic is extracted from the old combine block
+        val allRuns = runningRepository.getAllRuns().first()
         val runsForPlanning = allRuns.filter {
-            OffsetDateTime.parse(it.startDateLocal)
-                .toLocalDate()
-                .isBefore(planningStartDate)
+            OffsetDateTime.parse(it.startDateLocal).toLocalDate().isBefore(key.planningDate)
         }
 
-        val prePlanAnalysis = analyzeRunData(runsForPlanning, planningStartDate)
+        val prePlanAnalysis = analyzeRunData(runsForPlanning, key.planningDate)
 
         val relevantHistoricalRuns = runsForPlanning.filter {
             OffsetDateTime.parse(it.startDateLocal)
                 .toLocalDate()
-                .isAfter(planningStartDate.minusWeeks(8))
+                .isAfter(key.planningDate.minusWeeks(8))
         }
 
         val historicalData = historicalDataAnalyzer(relevantHistoricalRuns)
 
-        val today = LocalDate.now()
+        // --- Start of Risk/Progression Logic (unchanged) ---
+        val today = key.planningDate
+        val override = planStorage.loadRiskOverride()
+        val daysSinceOverride = override?.let { ChronoUnit.DAYS.between(it.startDate, today) }
 
         val freshAcwrMultiplier = when (prePlanAnalysis.runAnalysis?.acwrAssessment?.riskLevel) {
             AcwrRiskLevel.UNDERTRAINING -> 0.9f
@@ -80,9 +126,6 @@ class PlanRepository(
         val freshAcwrRiskDetected = freshAcwrMultiplier < 1.0f
         val freshLongRunRiskDetected =  freshLongRunMultiplier < 1.1f
 
-
-        val daysSinceOverride = override?.let { ChronoUnit.DAYS.between(it.startDate, today) }
-
         val nextOverride = when {
             override == null && freshAcwrRiskDetected ->
                 RiskOverride(
@@ -91,7 +134,6 @@ class PlanRepository(
                     acwrMultiplier = freshAcwrMultiplier,
                     longRunMultiplier = freshLongRunMultiplier
                 )
-
             override == null && freshLongRunRiskDetected ->
                 RiskOverride(
                     startDate = today,
@@ -99,21 +141,18 @@ class PlanRepository(
                     acwrMultiplier = freshAcwrMultiplier,
                     longRunMultiplier = freshLongRunMultiplier
                 )
-
             override?.phase == RiskPhase.DELOAD && freshAcwrMultiplier >= 0.9f ->
                 override.copy(
                     startDate = today,
                     phase = if (freshAcwrMultiplier > 0.9f) RiskPhase.COOLDOWN else RiskPhase.REBUILDING,
                     acwrMultiplier = freshAcwrMultiplier
                 )
-
             override?.phase == RiskPhase.REBUILDING && freshAcwrMultiplier > 0.9f ->
                 override.copy(
                     startDate = today,
                     phase = RiskPhase.COOLDOWN,
                     acwrMultiplier = freshAcwrMultiplier
                 )
-
             override?.phase == RiskPhase.COOLDOWN && freshAcwrRiskDetected ->
                 RiskOverride(
                     startDate = today,
@@ -121,13 +160,8 @@ class PlanRepository(
                     acwrMultiplier = freshAcwrMultiplier,
                     longRunMultiplier = freshLongRunMultiplier
                 )
-
-            override?.phase == RiskPhase.COOLDOWN && daysSinceOverride!! >= 7 ->
-                null
-
-            override?.phase == RiskPhase.LONG_RUN_LIMITED && daysSinceOverride!! >= 7 ->
-                null
-
+            override?.phase == RiskPhase.COOLDOWN && daysSinceOverride!! >= 7 -> null
+            override?.phase == RiskPhase.LONG_RUN_LIMITED && daysSinceOverride!! >= 7 -> null
             else -> override
         }
 
@@ -137,7 +171,7 @@ class PlanRepository(
 
         var acwrMultiplier = 1.0f
         var longRunMultiplier = 1.1f
-        var effectiveProgressionRate = userPreferences.progressionRate
+        var effectiveProgressionRate = key.userPreferences.progressionRate
 
         when (nextOverride?.phase) {
             RiskPhase.DELOAD, RiskPhase.REBUILDING -> {
@@ -145,68 +179,52 @@ class PlanRepository(
                 longRunMultiplier = nextOverride.longRunMultiplier
                 effectiveProgressionRate = ProgressionRate.RETAIN
             }
-
             RiskPhase.COOLDOWN, RiskPhase.LONG_RUN_LIMITED -> {
                 longRunMultiplier = nextOverride.longRunMultiplier
-                if (userPreferences.progressionRate == ProgressionRate.FAST) {
+                if (key.userPreferences.progressionRate == ProgressionRate.FAST) {
                     effectiveProgressionRate = ProgressionRate.SLOW
                 }
             }
-
             null -> Unit
         }
 
         val baseWeeklyVolume = prePlanAnalysis.runAnalysis?.chronicLoad ?: 0f
         val baseMaxLongRun = prePlanAnalysis.runAnalysis?.safeLongRun ?: 0f
-
-        // Apply the determined multipliers
         val adjustedWeeklyVolume = baseWeeklyVolume * acwrMultiplier
         val adjustedMaxLongRun = baseMaxLongRun * longRunMultiplier
 
-
-        // 5. Construct RecentData using the "pre-plan" analysis values
         val recentData = RecentData(
             maxSafeLongRun = adjustedMaxLongRun,
             baseWeeklyVolume = adjustedWeeklyVolume,
-            minDailyVolume = adjustedWeeklyVolume/10f,
+            minDailyVolume = adjustedWeeklyVolume / 10f,
             riskPhase = nextOverride?.phase
         )
 
-        val previousPlan = planStorage.loadPlan()
-
         val planInput = PlanInput(
-            userPreferences = userPreferences.copy(progressionRate = effectiveProgressionRate),
+            userPreferences = key.userPreferences.copy(progressionRate = effectiveProgressionRate),
             historicalData = historicalData,
             recentData = recentData,
             riskOverride = nextOverride,
-            previousPlan = previousPlan
+            previousPlan = planStorage.loadPlan()
         )
 
-        // Pass the clean runs and the analyzer to the generator
+        // --- End of Risk/Progression Logic ---
+
+        // Generate and Store
         val newPlan = planGenerator.generate(planInput, runsForPlanning, analyzeRunData)
+            .copy(historicalRunsHash = key.historicalRunsHash) // Tag with the hash
         planStorage.savePlan(newPlan)
-        
+
         // Trigger Sync
         coroutineScope.launch {
             calendarSyncService.syncPlanToCalendar(newPlan)
         }
-        
-        newPlan
 
-    }.stateIn(
-        scope = coroutineScope,
-        started = SharingStarted.Lazily,
-        initialValue = null
-    )
+        // Return as a flow
+        return flow { emit(newPlan) }.stateIn(coroutineScope)
+    }
 
     suspend fun syncCalendar() {
-        Log.d("PlanRepository", "Manual sync initiated.")
-        val currentPlan = latestPlan.value
-        if (currentPlan != null) {
-            Log.d("PlanRepository", "Found a plan to sync.")
-            calendarSyncService.syncPlanToCalendar(currentPlan)
-        } else {
-            Log.w("PlanRepository", "Manual sync requested, but no plan is available.")
-        }
+        latestPlan.first()?.let { calendarSyncService.syncPlanToCalendar(it) }
     }
 }

@@ -14,5 +14,6 @@ data class WeeklyTrainingPlan(
     val riskPhase: RiskPhase? = null,
     val progressionRate: ProgressionRate,
     val runTypesStructure: Map<DayOfWeek, RunType> = emptyMap(),
-    val userPreferences: UserPreferences? = null
+    val userPreferences: UserPreferences? = null,
+    val historicalRunsHash: Int? = null
 )

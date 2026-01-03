@@ -36,7 +36,7 @@ class PlanStorage(context: Context, moshi: Moshi) {
         _riskOverrideFlow.update { override }
     }
 
-    private fun loadRiskOverride(): RiskOverride? {
+    fun loadRiskOverride(): RiskOverride? {
         val json = sharedPreferences.getString(KEY_OVERRIDE, null) ?: return null
         return try {
             overrideAdapter.fromJson(json)
