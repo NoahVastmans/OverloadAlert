@@ -24,7 +24,7 @@ import kth.nova.overloadalert.domain.repository.AnalysisRepository
 import kth.nova.overloadalert.domain.repository.PlanRepository
 import kth.nova.overloadalert.domain.repository.PreferencesRepository
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
-import kth.nova.overloadalert.domain.usecases.CalendarSyncService
+import kth.nova.overloadalert.data.CalendarSyncService
 import kth.nova.overloadalert.domain.usecases.HistoricalDataAnalyzer
 import kth.nova.overloadalert.ui.screens.graphs.GraphsViewModel
 import kth.nova.overloadalert.ui.screens.history.HistoryViewModel

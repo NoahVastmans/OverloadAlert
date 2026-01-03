@@ -7,7 +7,7 @@ import kth.nova.overloadalert.domain.model.AcwrRiskLevel
 import kth.nova.overloadalert.domain.model.RiskLevel
 import kth.nova.overloadalert.domain.plan.*
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
-import kth.nova.overloadalert.domain.usecases.CalendarSyncService
+import kth.nova.overloadalert.data.CalendarSyncService
 import kth.nova.overloadalert.domain.usecases.HistoricalDataAnalyzer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

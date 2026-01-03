@@ -1,6 +1,5 @@
-package kth.nova.overloadalert.domain.repository
+package kth.nova.overloadalert.domain.plan
 
-import kth.nova.overloadalert.domain.plan.UserPreferences
 import java.time.LocalDate
 
 /**
