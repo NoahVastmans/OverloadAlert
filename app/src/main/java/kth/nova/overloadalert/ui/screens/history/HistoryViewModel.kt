@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kth.nova.overloadalert.domain.usecases.mergeRuns
 import java.time.OffsetDateTime
 
 class HistoryViewModel(
@@ -34,25 +35,21 @@ class HistoryViewModel(
                 val firstEverRunDate = runs.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
                 val displayStartDate = firstEverRunDate.plusDays(30)
 
-                // Group runs by date, then map each day to a single merged AnalyzedRun
+                // Group runs by date, then flatMap each day to a list of AnalyzedRun
                 runs.groupBy { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
-                    .mapNotNull { (runDate, runsOnDay) ->
+                    .flatMap { (runDate, runsOnDay) ->
                         if (runDate.isBefore(displayStartDate)) {
-                            return@mapNotNull null // Skip days within the initial 30-day period
+                            return@flatMap emptyList<AnalyzedRun>() // Skip days within the initial 30-day period
                         }
 
                         val risk = analysisData.combinedRiskByDate[runDate]
-                            ?: return@mapNotNull null // Skip if no risk is calculated
+                            ?: return@flatMap emptyList<AnalyzedRun>() // Skip if no risk is calculated
 
-                        // Create a single merged run for the day
-                        val totalDistance = runsOnDay.sumOf { it.distance.toDouble() }.toFloat()
-                        val totalMovingTime = runsOnDay.sumOf { it.movingTime }
-                        val representativeRun = runsOnDay.first().copy(
-                            distance = totalDistance,
-                            movingTime = totalMovingTime
-                        )
-
-                        AnalyzedRun(representativeRun, risk)
+                        // Merge runs for the same day and map to AnalyzedRun
+                        val mergedRunsForDay = mergeRuns(runsOnDay).reversed()
+                        mergedRunsForDay.map { mergedRun ->
+                            AnalyzedRun(mergedRun, risk)
+                        }
                     }
                     .sortedByDescending { OffsetDateTime.parse(it.run.startDateLocal).toLocalDate() }
             }
