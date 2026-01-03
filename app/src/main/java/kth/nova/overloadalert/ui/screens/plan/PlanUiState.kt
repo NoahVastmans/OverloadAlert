@@ -7,5 +7,6 @@ import kth.nova.overloadalert.domain.plan.WeeklyTrainingPlan
  */
 data class PlanUiState(
     val isLoading: Boolean = true,
-    val trainingPlan: WeeklyTrainingPlan? = null
+    val trainingPlan: WeeklyTrainingPlan? = null,
+    val isGoogleConnected: Boolean = false // Added for sync button logic
 )
