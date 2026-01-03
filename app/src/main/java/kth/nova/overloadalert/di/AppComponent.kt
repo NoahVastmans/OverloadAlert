@@ -181,12 +181,11 @@ class AppComponent(context: Context) {
         PlanViewModel.provideFactory(planRepository)
     }
     val preferencesViewModelFactory: ViewModelProvider.Factory by lazy {
-        object : ViewModelProvider.Factory {
-            @Suppress("UNCHECKED_CAST")
-            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                return PreferencesViewModel(preferencesRepository, googleAuthRepository, googleTokenManager) as T
-            }
-        }
+        PreferencesViewModel.provideFactory(
+            preferencesRepository,
+            googleAuthRepository,
+            googleTokenManager
+        )
     }
 
     init {

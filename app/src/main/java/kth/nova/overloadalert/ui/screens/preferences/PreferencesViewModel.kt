@@ -32,6 +32,7 @@ class PreferencesViewModel(
                     it.copy(
                         isLoading = false, 
                         preferences = prefs,
+                        initialPreferences = prefs, // Set both initial and current
                         isPlanValid = preferencesRepository.isPlanValid(prefs)
                     ) 
                 }
@@ -82,15 +83,13 @@ class PreferencesViewModel(
 
     companion object {
         fun provideFactory(
-            preferencesRepository: PreferencesRepository
+            preferencesRepository: PreferencesRepository,
+            googleAuthRepository: GoogleAuthRepository,
+            googleTokenManager: GoogleTokenManager
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                // We'll need to inject these via the factory, 
-                // but for now let's assume we can get them from the AppComponent (passed as dependency)
-                // Actually, the factory is usually created in the composition root.
-                // We will need to update the factory creation in AppComponent or pass dependencies here.
-                throw IllegalStateException("Use AppComponent to create this factory")
+                return PreferencesViewModel(preferencesRepository, googleAuthRepository, googleTokenManager) as T
             }
         }
     }

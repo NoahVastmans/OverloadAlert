@@ -8,6 +8,7 @@ import kth.nova.overloadalert.domain.plan.UserPreferences
 data class PreferencesUiState(
     val isLoading: Boolean = true,
     val preferences: UserPreferences = UserPreferences(),
+    val initialPreferences: UserPreferences = UserPreferences(), // The state to compare against for changes
     val isPlanValid: Boolean = true,
     val isGoogleConnected: Boolean = false
 )

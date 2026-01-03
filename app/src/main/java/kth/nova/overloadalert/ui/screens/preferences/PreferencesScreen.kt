@@ -89,7 +89,11 @@ fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {
     }
 
     BackHandler(enabled = true) {
-        showDiscardDialog = true
+        if (uiState.preferences != uiState.initialPreferences) {
+            showDiscardDialog = true
+        } else {
+            onNavigateBack()
+        }
     }
 
     if (showDiscardDialog) {
