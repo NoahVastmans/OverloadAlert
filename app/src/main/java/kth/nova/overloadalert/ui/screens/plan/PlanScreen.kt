@@ -15,13 +15,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsRun
-import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Hotel
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.SelfImprovement
-import androidx.compose.material.icons.filled.Straight
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -39,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -56,10 +53,11 @@ fun PlanScreen(appComponent: AppComponent) {
     val viewModel: PlanViewModel = viewModel(factory = appComponent.planViewModelFactory)
     val uiState by viewModel.uiState.collectAsState()
     var showInfoDialog by remember { mutableStateOf(false) }
+    var showNotConnectedDialog by remember { mutableStateOf(false) }
 
     val plan = uiState.trainingPlan
     val planTitle = PlanTitle(plan?.riskPhase, plan?.progressionRate)
-
+    val isPremium = uiState.trainingPlan?.userPreferences?.isPremium ?: false
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -70,18 +68,20 @@ fun PlanScreen(appComponent: AppComponent) {
                 CircularProgressIndicator()
             }
 
-            uiState.trainingPlan != null -> {
+            plan != null -> {
                 val today = LocalDate.now().dayOfWeek
-                val todayIndex = plan!!.days.indexOfFirst { it.dayOfWeek == today }
-                val rotatedDays =
-                    if (todayIndex != -1) {
-                        plan.days.subList(todayIndex, plan.days.size) +
-                                plan.days.subList(0, todayIndex)
-                    } else {
-                        plan.days
-                    }
+                val todayIndex = plan.days.indexOfFirst { it.dayOfWeek == today }
+                val rotatedDays = if (todayIndex != -1) {
+                    plan.days.subList(todayIndex, plan.days.size) + plan.days.subList(0, todayIndex)
+                } else {
+                    plan.days
+                }
 
-                Column(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(if (!isPremium) Modifier.blur(8.dp) else Modifier)
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -94,13 +94,20 @@ fun PlanScreen(appComponent: AppComponent) {
                             modifier = Modifier.weight(1f)
                         )
 
-                        // Manual Sync Button
-                        IconButton(onClick = { viewModel.syncCalendar() }) {
-                            Icon(
-                                imageVector = Icons.Default.Sync,
-                                contentDescription = "Sync to Calendar",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                        if (isPremium) {
+                            IconButton(onClick = { 
+                                if (uiState.isGoogleConnected) {
+                                    viewModel.syncCalendar()
+                                } else {
+                                    showNotConnectedDialog = true
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.Sync,
+                                    contentDescription = "Sync to Calendar",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
 
                         IconButton(onClick = { showInfoDialog = true }) {
@@ -127,27 +134,31 @@ fun PlanScreen(appComponent: AppComponent) {
                         }
                     }
                 }
+
+                if (!isPremium) {
+                    PaywallOverlay(onUnlock = { viewModel.unlockPremium() })
+                }
             } else -> {
                 Text("Not enough data to generate a plan.")
             }
         }
     }
+
     if (showInfoDialog) {
         AlertDialog(
             onDismissRequest = { showInfoDialog = false },
-            confirmButton = {
-                TextButton(onClick = { showInfoDialog = false }) {
-                    Text("OK")
-                }
-            },
+            confirmButton = { TextButton(onClick = { showInfoDialog = false }) { Text("OK") } },
             title = { Text("Training Plan Info") },
-            text = {
-                Text(
-                    "This screen shows your personalized training plan. "
-                            + "Days are ordered starting from today. "
-                            + "The plan adapts based on your recent training load and recovery."
-                )
-            }
+            text = { Text("This screen shows your personalized training plan. Days are ordered starting from today. The plan adapts based on your recent training load and recovery.") }
+        )
+    }
+
+    if (showNotConnectedDialog) {
+        AlertDialog(
+            onDismissRequest = { showNotConnectedDialog = false },
+            confirmButton = { TextButton(onClick = { showNotConnectedDialog = false }) { Text("OK") } },
+            title = { Text("Not Connected to Google Calendar") },
+            text = { Text("To sync your plan, please connect to Google Calendar in the Preferences screen first.") }
         )
     }
 }
@@ -156,8 +167,7 @@ fun PlanScreen(appComponent: AppComponent) {
 fun DailyPlanItem(plan: DailyPlan, isToday: Boolean, isRestWeek: Boolean) {
     val displayRunType = if (isRestWeek) {
         when (plan.runType) {
-            RunType.LONG,
-            RunType.MODERATE -> RunType.SHORT
+            RunType.LONG, RunType.MODERATE -> RunType.SHORT
             else -> plan.runType
         }
     } else {
@@ -222,10 +232,8 @@ fun PlanTitle(riskPhase: RiskPhase?, progressionRate: ProgressionRate?): String 
         RiskPhase.DELOAD -> "Recovery after overtraining"
         RiskPhase.REBUILDING -> "Rebuilding after detraining"
         RiskPhase.COOLDOWN ->
-            if (progressionRate == ProgressionRate.FAST)
-                "Building slowly after recovery/rebuilding"
-            else
-                "Optimal $rateLabel Training Plan"
+            if (progressionRate == ProgressionRate.FAST) "Building slowly after recovery/rebuilding"
+            else "Optimal $rateLabel Training Plan"
         RiskPhase.LONG_RUN_LIMITED -> "Optimal $rateLabel Training Plan with limited long run"
     }
 }

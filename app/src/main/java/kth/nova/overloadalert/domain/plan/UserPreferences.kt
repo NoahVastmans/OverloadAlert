@@ -11,5 +11,6 @@ data class UserPreferences(
     val preferredLongRunDays: Set<DayOfWeek> = emptySet(),
     val maxRunsPerWeek: Int = 7,
     val forbiddenRunDays: Set<DayOfWeek> = emptySet(),
-    val progressionRate: ProgressionRate = ProgressionRate.SLOW // Default to a safe, slow progression
+    val progressionRate: ProgressionRate = ProgressionRate.SLOW, // Default to a safe, slow progression
+    val isPremium: Boolean = false // Added for paywall feature
 )

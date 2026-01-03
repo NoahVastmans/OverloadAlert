@@ -6,6 +6,7 @@ import androidx.room.Room
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kth.nova.overloadalert.data.AuthRepository
+import kth.nova.overloadalert.data.CalendarSyncService
 import kth.nova.overloadalert.data.LocalDateAdapter
 import kth.nova.overloadalert.data.RunningRepository
 import kth.nova.overloadalert.data.TokenManager
@@ -24,7 +25,6 @@ import kth.nova.overloadalert.domain.repository.AnalysisRepository
 import kth.nova.overloadalert.domain.repository.PlanRepository
 import kth.nova.overloadalert.domain.repository.PreferencesRepository
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
-import kth.nova.overloadalert.data.CalendarSyncService
 import kth.nova.overloadalert.domain.usecases.HistoricalDataAnalyzer
 import kth.nova.overloadalert.ui.screens.graphs.GraphsViewModel
 import kth.nova.overloadalert.ui.screens.history.HistoryViewModel
@@ -42,7 +42,6 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 
 class AppComponent(context: Context) {
 
-    // Create an application-level coroutine scope
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val moshi = Moshi.Builder()
@@ -50,11 +49,9 @@ class AppComponent(context: Context) {
         .add(KotlinJsonAdapterFactory())
         .build()
 
-    // --- Token Managers ---
     val tokenManager by lazy { TokenManager(context) }
     val googleTokenManager by lazy { GoogleTokenManager(context) }
 
-    // --- Strava Network Stack ---
     private val unauthenticatedRetrofit = Retrofit.Builder()
         .baseUrl("https://www.strava.com/api/v3/")
         .addConverterFactory(MoshiConverterFactory.create(moshi))
@@ -93,15 +90,13 @@ class AppComponent(context: Context) {
         authenticatedRetrofit.create(StravaApiService::class.java)
     }
 
-    // --- Repositories (needed for Google Authenticator) ---
     val googleAuthRepository: GoogleAuthRepository by lazy { GoogleAuthRepository(context, googleTokenManager) }
 
-    // --- Google Calendar Network Stack ---
     private val googleTokenAuthenticator by lazy { GoogleTokenAuthenticator(googleAuthRepository, googleTokenManager) }
 
     private val googleOkHttpClient by lazy {
         OkHttpClient.Builder()
-            .authenticator(googleTokenAuthenticator) // Add the authenticator here
+            .authenticator(googleTokenAuthenticator)
             .addInterceptor { chain ->
                 val token = googleTokenManager.getAccessToken()
                 val request = if (token != null) {
@@ -117,7 +112,7 @@ class AppComponent(context: Context) {
     }
 
     private val googleRetrofit = Retrofit.Builder()
-        .baseUrl("https://www.googleapis.com/calendar/v3/") // Correct Base URL for Calendar API v3
+        .baseUrl("https://www.googleapis.com/calendar/v3/")
         .client(googleOkHttpClient)
         .addConverterFactory(MoshiConverterFactory.create(moshi))
         .build()
@@ -126,7 +121,6 @@ class AppComponent(context: Context) {
         googleRetrofit.create(GoogleCalendarApiService::class.java)
     }
 
-    // --- Database ---
     private val appDatabase: AppDatabase by lazy {
         Room.databaseBuilder(
             context.applicationContext,
@@ -136,17 +130,13 @@ class AppComponent(context: Context) {
         .build()
     }
 
-    // --- Storage ---
     val planStorage: PlanStorage by lazy { PlanStorage(context, moshi) }
 
-    // --- Repositories ---
     val authRepository: AuthRepository by lazy { AuthRepository(stravaAuthService, tokenManager) }
-    // googleAuthRepository is already defined above
     val runningRepository: RunningRepository by lazy { RunningRepository(appDatabase.runDao(), stravaApiService, tokenManager) }
     val googleCalendarRepository: GoogleCalendarRepository by lazy { GoogleCalendarRepository(googleCalendarApiService) }
-    val preferencesRepository: PreferencesRepository by lazy { PreferencesRepository(context) }
+    val preferencesRepository: PreferencesRepository by lazy { PreferencesRepository(context, googleTokenManager, appScope) }
 
-    // --- Use Cases ---
     val analyzeRunData: AnalyzeRunData by lazy { AnalyzeRunData() }
     private val historicalDataAnalyzer: HistoricalDataAnalyzer by lazy { HistoricalDataAnalyzer() }
     private val weeklyTrainingPlanGenerator: WeeklyTrainingPlanGenerator by lazy { WeeklyTrainingPlanGenerator() }
@@ -154,7 +144,6 @@ class AppComponent(context: Context) {
         CalendarSyncService(appDatabase.calendarSyncDao(), googleCalendarRepository, googleAuthRepository, planStorage) 
     }
 
-    // --- Composite Repositories ---
     val analysisRepository: AnalysisRepository by lazy { AnalysisRepository(runningRepository, analyzeRunData, appScope) }
     val planRepository: PlanRepository by lazy {
         PlanRepository(
@@ -170,7 +159,6 @@ class AppComponent(context: Context) {
         )
     }
 
-    // --- ViewModel Factories ---
     val authViewModelFactory: ViewModelProvider.Factory by lazy { AuthViewModel.provideFactory(authRepository, tokenManager) }
     val homeViewModelFactory: ViewModelProvider.Factory by lazy { HomeViewModel.provideFactory(analysisRepository, runningRepository, tokenManager) }
     val historyViewModelFactory: ViewModelProvider.Factory by lazy { 
@@ -178,13 +166,12 @@ class AppComponent(context: Context) {
     }
     val graphsViewModelFactory: ViewModelProvider.Factory by lazy { GraphsViewModel.provideFactory(analysisRepository) }
     val planViewModelFactory: ViewModelProvider.Factory by lazy {
-        PlanViewModel.provideFactory(planRepository)
+        PlanViewModel.provideFactory(planRepository, preferencesRepository)
     }
     val preferencesViewModelFactory: ViewModelProvider.Factory by lazy {
         PreferencesViewModel.provideFactory(
             preferencesRepository,
-            googleAuthRepository,
-            googleTokenManager
+            googleAuthRepository
         )
     }
 

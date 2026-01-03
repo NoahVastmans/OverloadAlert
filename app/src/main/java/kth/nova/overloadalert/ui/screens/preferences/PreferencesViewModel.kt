@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kth.nova.overloadalert.data.remote.GoogleAuthRepository
-import kth.nova.overloadalert.data.remote.GoogleTokenManager
 import kth.nova.overloadalert.domain.repository.PreferencesRepository
 import kth.nova.overloadalert.domain.plan.UserPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,8 +17,7 @@ import kotlinx.coroutines.launch
 
 class PreferencesViewModel(
     private val preferencesRepository: PreferencesRepository,
-    private val googleAuthRepository: GoogleAuthRepository,
-    private val googleTokenManager: GoogleTokenManager
+    private val googleAuthRepository: GoogleAuthRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PreferencesUiState())
@@ -32,22 +30,26 @@ class PreferencesViewModel(
                     it.copy(
                         isLoading = false, 
                         preferences = prefs,
-                        initialPreferences = prefs, // Set both initial and current
+                        initialPreferences = if (it.initialPreferences == UserPreferences()) prefs else it.initialPreferences,
                         isPlanValid = preferencesRepository.isPlanValid(prefs)
                     ) 
                 }
             }
             .launchIn(viewModelScope)
-            
-        googleTokenManager.isConnected
-            .onEach { connected ->
-                _uiState.update { it.copy(isGoogleConnected = connected) }
+
+        preferencesRepository.isGoogleConnected
+            .onEach { isConnected ->
+                _uiState.update { it.copy(isGoogleConnected = isConnected) }
             }
             .launchIn(viewModelScope)
     }
 
     fun savePreferences(preferences: UserPreferences, onSaveComplete: () -> Unit) {
         viewModelScope.launch {
+            val wasPremium = _uiState.value.initialPreferences.isPremium
+            if (wasPremium && !preferences.isPremium) {
+                googleAuthRepository.signOut()
+            }
             preferencesRepository.savePreferences(preferences)
             onSaveComplete()
         }
@@ -62,8 +64,6 @@ class PreferencesViewModel(
             ) 
         }
     }
-    
-    // --- Google Sign-In Methods ---
     
     fun getGoogleSignInIntent(): Intent {
         return googleAuthRepository.getSignInIntent()
@@ -84,12 +84,11 @@ class PreferencesViewModel(
     companion object {
         fun provideFactory(
             preferencesRepository: PreferencesRepository,
-            googleAuthRepository: GoogleAuthRepository,
-            googleTokenManager: GoogleTokenManager
+            googleAuthRepository: GoogleAuthRepository
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return PreferencesViewModel(preferencesRepository, googleAuthRepository, googleTokenManager) as T
+                return PreferencesViewModel(preferencesRepository, googleAuthRepository) as T
             }
         }
     }
