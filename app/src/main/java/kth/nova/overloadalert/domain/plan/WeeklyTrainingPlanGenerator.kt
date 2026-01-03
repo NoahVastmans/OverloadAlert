@@ -29,7 +29,7 @@ class WeeklyTrainingPlanGenerator {
         var dailyDistances = distributeLoad(runTypes, weeklyVolume, input)
         var twoBack: Map<DayOfWeek, Float>? = null
 
-        if (input.recentData.riskPhase != RiskPhase.DELOAD) {
+        if (input.recentData.riskPhase != RiskPhase.DELOAD || input.recentData.riskPhase != RiskPhase.REBUILDING) {
             for (i in 0 until 10) {
                 val before = dailyDistances.toMap()
                 val (validatedDistances, safeRanges) = validateAndAdjustPlan(dailyDistances.toMutableMap(), allRuns, analyzeRunData)
