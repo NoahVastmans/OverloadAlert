@@ -42,12 +42,12 @@ class HistoryViewModel(
                             return@flatMap emptyList<AnalyzedRun>() // Skip days within the initial 30-day period
                         }
 
-                        val risk = analysisData.combinedRiskByDate[runDate]
-                            ?: return@flatMap emptyList<AnalyzedRun>() // Skip if no risk is calculated
-
                         // Merge runs for the same day and map to AnalyzedRun
                         val mergedRunsForDay = mergeRuns(runsOnDay).reversed()
-                        mergedRunsForDay.map { mergedRun ->
+                        mergedRunsForDay.mapNotNull { mergedRun ->
+                            val risk = analysisData.combinedRiskByRunID[mergedRun.id]
+                                ?: return@mapNotNull null // Skip if no risk is calculated
+
                             AnalyzedRun(mergedRun, risk)
                         }
                     }

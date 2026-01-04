@@ -1,6 +1,5 @@
 package kth.nova.overloadalert.domain.usecases
 
-import android.util.Log
 import androidx.compose.ui.graphics.Color
 import com.github.mikephil.charting.data.BarEntry
 import com.github.mikephil.charting.data.Entry
@@ -109,7 +108,7 @@ class AnalyzeRunData {
         val graphData = GraphData(dailyLoadBars, longestRunThresholdLine, finalDateLabels, acuteLoadLine, chronicLoadLine)
 
         // --- Data for Historyscreen ---
-        val combinedRiskByDate = mutableMapOf<LocalDate, CombinedRisk>()
+        val combinedRiskByRunID = mutableMapOf<Long, CombinedRisk>()
         val baselineByDate = mutableMapOf<LocalDate, Float>()
 
         smoothedLongestRunThresholds.forEachIndexed { index, value ->
@@ -118,15 +117,16 @@ class AnalyzeRunData {
         }
 
         mergedRuns.forEachIndexed { index, run ->
+            val runID = run.id
             val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
             val acwrAssessment = acwrByDate[runDate]
             val baseline = baselineByDate[runDate] ?: 0f
             val singleRunRiskAssessment = calculateRisk(run.distance, baseline)
             val combinedRisk = generateCombinedRisk(singleRunRiskAssessment, acwrAssessment)
-            combinedRiskByDate[runDate] = combinedRisk
+            combinedRiskByRunID[runID] = combinedRisk
 
         }
-        return UiAnalysisData(runAnalysis, graphData, combinedRiskByDate)
+        return UiAnalysisData(runAnalysis, graphData, combinedRiskByRunID)
     }
 
     private fun generateCombinedRisk(runRisk: SingleRunRiskAssessment, acwr: AcwrAssessment?): CombinedRisk {
