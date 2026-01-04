@@ -1,5 +1,6 @@
 package kth.nova.overloadalert.domain.usecases
 
+import android.util.Log
 import androidx.compose.ui.graphics.Color
 import com.github.mikephil.charting.data.BarEntry
 import com.github.mikephil.charting.data.Entry
@@ -15,79 +16,192 @@ import kotlin.math.min
 class AnalyzeRunData {
 
     operator fun invoke(runs: List<Run>, referenceDate: LocalDate): UiAnalysisData {
-        if (runs.isEmpty()) return UiAnalysisData(null, null)
+        if (runs.isEmpty()) return UiAnalysisData(null, null, emptyMap())
 
-        val today = referenceDate // Use the explicit reference date
         val startDate = runs.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
+        val cachedAnalysis = performFullAnalysis(runs, startDate, referenceDate)
+        return deriveUiDataFromCache(cachedAnalysis, runs, referenceDate)
+    }
 
-        // --- Full Historical Analysis ---
-        val dailyLoads = createDailyLoadSeries(runs, startDate, today)
-        val capValue = getIqrCapValue(dailyLoads)
-        val cappedDailyLoads = dailyLoads.map { it.coerceAtMost(capValue) }
+    fun updateAnalysisFrom(cached: CachedAnalysis?, runs: List<Run>, overlapDate: LocalDate): CachedAnalysis {
+        if (cached == null) {
+            val startDate = runs.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
+            return performFullAnalysis(runs, startDate, LocalDate.now())
+        }
 
-        val acuteLoadSeries = calculateRollingSum(dailyLoads, 7)
+        val overlapIndex = ChronoUnit.DAYS.between(cached.acwrByDate.keys.minOrNull() ?: overlapDate, overlapDate).toInt()
+        if (overlapIndex < 0) {
+            val startDate = runs.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
+            return performFullAnalysis(runs, startDate, LocalDate.now())
+        }
+
+        val truncatedDailyLoads = cached.dailyLoads.take(overlapIndex)
+        val updatedRuns = runs.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(overlapDate.minusDays(1)) }
+        val newDailyLoads = createDailyLoadSeries(updatedRuns, overlapDate, LocalDate.now())
+
+        val combinedDailyLoads = truncatedDailyLoads + newDailyLoads
+
+        val previousCappedLoads = cached.cappedDailyLoads.take(overlapIndex)
+        val newCaps = appendRollingLoadCaps(truncatedDailyLoads, newDailyLoads)
+        val newCappedDailyLoads =
+            newDailyLoads.mapIndexed { i, load ->
+                val cap = newCaps[i]
+                if (cap > 0f) load.coerceAtMost(cap) else load
+            }
+        val cappedDailyLoads = previousCappedLoads + newCappedDailyLoads
+
+        val previousAcute = cached.acuteLoadSeries.take(overlapIndex)
+        val newAcute = appendRollingSum(
+            previousData = cached.dailyLoads.take(overlapIndex),
+            newData = newDailyLoads,
+            window = 7
+        )
+        val acuteLoadSeries = previousAcute + newAcute
+
+        val previousChronic = cached.chronicLoadSeries.take(overlapIndex)
+        val lastChronic = previousChronic.lastOrNull() ?: 0f
+
+        val newChronic = appendEwma(
+            lastEwma = lastChronic,
+            newData = newCappedDailyLoads,
+            span = 28
+        )
+
+        val chronicLoadSeries = previousChronic + newChronic
+
+        val startDate = cached.acwrByDate.keys.minOrNull() ?: overlapDate
+        val acwrByDate = appendAcwrMap(
+            cachedAcwr = cached.acwrByDate,
+            startDate = startDate,
+            overlapIndex = overlapIndex,
+            acuteLoadSeries = acuteLoadSeries,
+            chronicLoadSeries = chronicLoadSeries
+        )
+
+        val totalDays = ChronoUnit.DAYS.between(startDate, LocalDate.now()).toInt() + 1
+        val rawThresholds = appendRawLongestRunThresholds(overlapIndex, startDate, totalDays, runs)
+        val previousSmoothed = cached.smoothedLongestRunThresholds.lastOrNull() ?: 0f
+
+        val smoothedLongestRunThresholds =
+            appendEwma(
+                lastEwma = previousSmoothed,
+                newData = rawThresholds,
+                span = 7
+            )
+        val finalSmoothed = cached.smoothedLongestRunThresholds.take(overlapIndex) + smoothedLongestRunThresholds
+
+        val truncatedCombinedRiskByRunID = cached.combinedRiskByRunID.filter { (runId, _) ->
+            val runDate = runs.find { it.id == runId }?.let { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
+            runDate?.isBefore(overlapDate) ?: true
+        }.toMutableMap()
+
+        // Build baseline map
+        val baselineByDate = smoothedLongestRunThresholds.indices.associate { i ->
+            startDate.plusDays(i.toLong()) to smoothedLongestRunThresholds[i]
+        }
+
+        val newCombinedRiskByRunID = mutableMapOf<Long, CombinedRisk>()
+        // Recompute risk for runs on or after overlapDate
+        runs.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate() >= overlapDate }
+            .forEach { run ->
+                val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
+                val baseline = baselineByDate[runDate] ?: 0f
+                val runSingleRisk = calculateRisk(run.distance, baseline)
+                newCombinedRiskByRunID[run.id] = generateCombinedRisk(runSingleRisk, acwrByDate[runDate])
+            }
+        val combinedRiskByRunID = truncatedCombinedRiskByRunID + newCombinedRiskByRunID
+
+
+        return CachedAnalysis(
+            lastRunHash = runs.hashCode(),
+            dailyLoads = combinedDailyLoads,
+            cappedDailyLoads = cappedDailyLoads,
+            acuteLoadSeries = acuteLoadSeries,
+            chronicLoadSeries = chronicLoadSeries,
+            acwrByDate = acwrByDate,
+            smoothedLongestRunThresholds = finalSmoothed,
+            combinedRiskByRunID = combinedRiskByRunID
+        )
+    }
+
+    fun deriveUiDataFromCache(cached: CachedAnalysis?, runs: List<Run> , referenceDate: LocalDate): UiAnalysisData {
+        if (cached == null) return UiAnalysisData(null, null)
+
+        val today = referenceDate
+        val dailyLoads = cached.dailyLoads
+        val acuteLoadSeries = cached.acuteLoadSeries
+        val chronicLoadSeries = cached.chronicLoadSeries
+        val acwrByDate = cached.acwrByDate
+        val smoothedLongestRunThresholds = cached.smoothedLongestRunThresholds
+
+        val acuteLoad = acuteLoadSeries.lastOrNull() ?: 0f
+        val chronicLoad = chronicLoadSeries.lastOrNull() ?: 0f
+
+        val lastRun = runs.lastOrNull()
+        val thirtyDaysBefore = lastRun?.let { OffsetDateTime.parse(it.startDateLocal).toLocalDate().minusDays(30) } ?: today.minusDays(30)
+
+        val relevantPrecedingRuns = runs.filter { run ->
+            val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
+            runDate.isAfter(thirtyDaysBefore) && runDate.isBefore(today.plusDays(1))
+        }
+
+        val stableBaseline = getStableLongestRun(relevantPrecedingRuns)
+        val singleRunRisk = lastRun?.let { calculateRisk(it.distance, stableBaseline) } ?: SingleRunRiskAssessment(RiskLevel.NONE, "")
+        val combinedRisk = generateCombinedRisk(singleRunRisk, acwrByDate[today])
+        val safeLongestRunForDisplay = stableBaseline * 1.1f
+
+
+        val todaysLoad = dailyLoads.lastOrNull() ?: 0f
+        val remainingLongestRun = safeLongestRunForDisplay - todaysLoad
+        val remainingChronicLoad = chronicLoad * 1.3f - acuteLoad
+        val recommendedTodaysRun = max(0f, min(remainingLongestRun, remainingChronicLoad))
+        val maxWeeklyLoad = max(0f, chronicLoad * 1.3f - todaysLoad)
+        val minRecommendedTodaysRun = min(max(0f, chronicLoad * 0.8f - acuteLoad), safeLongestRunForDisplay * 0.5f)
+
+        val runAnalysis = RunAnalysis(
+            acuteLoad, chronicLoad, recommendedTodaysRun, maxWeeklyLoad,
+            combinedRisk, safeLongestRunForDisplay, minRecommendedTodaysRun,
+            acwrByDate[today], singleRunRisk
+        )
+
+        // Data For GraphsScreen
+        val finalDateLabels = (0..29).map { today.minusDays(29L - it).dayOfMonth.toString() }
+        val dailyLoadBars = dailyLoads.takeLast(30).mapIndexed { index, value -> BarEntry(index.toFloat(), value) }
+        val longestRunThresholdLine = smoothedLongestRunThresholds.takeLast(30).mapIndexed { index, value -> Entry(index.toFloat(), value) }
+        val acuteLoadLine = acuteLoadSeries.takeLast(30).mapIndexed { index, value -> Entry(index.toFloat(), value) }
+        val chronicLoadLine = chronicLoadSeries.takeLast(30).mapIndexed { index, value -> Entry(index.toFloat(), value) }
+
+        val graphData = GraphData(dailyLoadBars, longestRunThresholdLine, finalDateLabels, acuteLoadLine, chronicLoadLine)
+
+        // Data For HistoryScreen
+        val combinedRiskByRunID = cached.combinedRiskByRunID
+
+        return UiAnalysisData(runAnalysis, graphData, combinedRiskByRunID)
+    }
+
+    private fun performFullAnalysis(runs: List<Run>, startDate: LocalDate, endDate: LocalDate): CachedAnalysis {
+        val dailyLoads = createDailyLoadSeries(runs, startDate, endDate)
+        val loadCapSeries = createRollingLoadCapSeries(dailyLoads)
+        val cappedDailyLoads = dailyLoads.mapIndexed { i, load ->
+            val cap = loadCapSeries[i]
+            if (cap > 0f) load.coerceAtMost(cap) else load
+        }
+
+
+        val acuteLoadSeries = calculateRollingSum(cappedDailyLoads, 7)
         val cappedAcuteLoadSeries = calculateRollingSum(cappedDailyLoads, 7)
         val chronicLoadSeries = calculateEwma(cappedAcuteLoadSeries, 28)
 
-        // --- ACWR time series (single source of truth) ---
         val acwrByDate = mutableMapOf<LocalDate, AcwrAssessment>()
-
         dailyLoads.indices.forEach { i ->
             val date = startDate.plusDays(i.toLong())
             val acute = acuteLoadSeries[i]
             val chronic = chronicLoadSeries.getOrNull(i) ?: 0f
 
-            if (chronic > 0f) {
-                val ratio = acute / chronic
-                val risk = when {
-                    ratio > 2.0f -> AcwrRiskLevel.HIGH_OVERTRAINING
-                    ratio > 1.3f -> AcwrRiskLevel.MODERATE_OVERTRAINING
-                    ratio > 0.8f -> AcwrRiskLevel.OPTIMAL
-                    else -> AcwrRiskLevel.UNDERTRAINING
-                }
-
-                acwrByDate[date] = AcwrAssessment(risk, ratio, "")
-            }
+            val assessment = computeAcwrAssessment(acute, chronic)
+            if (assessment != null) {acwrByDate[date] = assessment}
         }
 
-        // --- Data for HomeScreen ---
-        val acuteLoad = acuteLoadSeries.lastOrNull() ?: 0f
-        val chronicLoad = chronicLoadSeries.lastOrNull() ?: 0f
-        val acwrAssessment = acwrByDate[today]
-
-
-        val mergedRuns = mergeRuns(runs)
-        val mostRecentRun = mergedRuns.last()
-        val precedingRuns = mergedRuns.dropLast(1)
-
-        val thirtyDaysBeforeMostRecent = OffsetDateTime.parse(mostRecentRun.startDateLocal).toLocalDate().minusDays(30)
-        val relevantPrecedingRuns = precedingRuns.filter {
-            OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(thirtyDaysBeforeMostRecent)
-        }
-        val stableBaseline = getStableLongestRun(relevantPrecedingRuns)
-        val singleRunRiskAssessment = calculateRisk(mostRecentRun.distance, stableBaseline)
-        val combinedRisk = generateCombinedRisk(singleRunRiskAssessment, acwrAssessment)
-
-        val safeLongestRunForDisplay = if (mostRecentRun.distance > stableBaseline * 1.1f && stableBaseline > 0) {
-            stableBaseline * 1.1f
-        } else if (mostRecentRun.distance > stableBaseline && mostRecentRun.distance < stableBaseline * 1.1f) {
-            mostRecentRun.distance
-        } else {
-            stableBaseline
-        }
-
-        val todaysLoad = dailyLoads.lastOrNull() ?: 0f
-        val remainingLongestRun = safeLongestRunForDisplay * 1.1f - todaysLoad
-        val remainingChronicLoad = chronicLoad * 1.3f - acuteLoad
-        val recommendedTodaysRun = max(0f, min(remainingLongestRun, remainingChronicLoad))
-        val maxWeeklyLoad = max(0f, chronicLoad * 1.3f - todaysLoad)
-        val safeLongRun = safeLongestRunForDisplay * 1.1f
-        val minRecommendedTodaysRun = min(max(0f, chronicLoad * 0.8f - acuteLoad), safeLongRun * 0.5f)
-
-
-        val runAnalysis = RunAnalysis(acuteLoad, chronicLoad, recommendedTodaysRun, maxWeeklyLoad, combinedRisk, safeLongRun, minRecommendedTodaysRun, acwrAssessment, singleRunRiskAssessment)
-
-        // --- Data for GraphsScreen ---
         val longestRunThresholds = (0 until dailyLoads.size).map { i ->
             val date = startDate.plusDays(i.toLong())
             val thirtyDaysBefore = date.minusDays(30)
@@ -99,34 +213,76 @@ class AnalyzeRunData {
         }
         val smoothedLongestRunThresholds = calculateEwma(longestRunThresholds, 7)
 
-        val finalDateLabels = (0..29).map { today.minusDays(29L - it).dayOfMonth.toString() }
-        val dailyLoadBars = dailyLoads.takeLast(30).mapIndexed { index, value -> BarEntry(index.toFloat(), value) }
-        val longestRunThresholdLine = smoothedLongestRunThresholds.takeLast(30).mapIndexed { index, value -> Entry(index.toFloat(), value) }
-        val acuteLoadLine = acuteLoadSeries.takeLast(30).mapIndexed { index, value -> Entry(index.toFloat(), value) }
-        val chronicLoadLine = chronicLoadSeries.takeLast(30).mapIndexed { index, value -> Entry(index.toFloat(), value) }
+        val baselineByDate = smoothedLongestRunThresholds.indices.associate { i ->
+            startDate.plusDays(i.toLong()) to smoothedLongestRunThresholds[i]
+        }
 
-        val graphData = GraphData(dailyLoadBars, longestRunThresholdLine, finalDateLabels, acuteLoadLine, chronicLoadLine)
-
-        // --- Data for Historyscreen ---
         val combinedRiskByRunID = mutableMapOf<Long, CombinedRisk>()
-        val baselineByDate = mutableMapOf<LocalDate, Float>()
+        // Recompute risk for runs on or after overlapDate
+        runs.forEach { run ->
+                val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
+                val baseline = baselineByDate[runDate] ?: 0f
+                val runSingleRisk = calculateRisk(run.distance, baseline)
+                combinedRiskByRunID[run.id] = generateCombinedRisk(runSingleRisk, acwrByDate[runDate])
+            }
 
-        smoothedLongestRunThresholds.forEachIndexed { index, value ->
-            val date = startDate.plusDays(index.toLong())
-            baselineByDate[date] = value
+        return CachedAnalysis(
+            lastRunHash = runs.hashCode(),
+            dailyLoads = dailyLoads,
+            cappedDailyLoads = cappedDailyLoads,
+            acuteLoadSeries = acuteLoadSeries,
+            chronicLoadSeries = chronicLoadSeries,
+            acwrByDate = acwrByDate,
+            smoothedLongestRunThresholds = smoothedLongestRunThresholds,
+            combinedRiskByRunID = combinedRiskByRunID
+        )
+    }
+
+    private fun computeAcwrAssessment(
+        acute: Float,
+        chronic: Float
+    ): AcwrAssessment? {
+        if (chronic <= 0f) return null
+
+        val ratio = acute / chronic
+        val risk = when {
+            ratio > 2.0f -> AcwrRiskLevel.HIGH_OVERTRAINING
+            ratio > 1.3f -> AcwrRiskLevel.MODERATE_OVERTRAINING
+            ratio > 0.8f -> AcwrRiskLevel.OPTIMAL
+            else -> AcwrRiskLevel.UNDERTRAINING
         }
 
-        mergedRuns.forEachIndexed { index, run ->
-            val runID = run.id
-            val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
-            val acwrAssessment = acwrByDate[runDate]
-            val baseline = baselineByDate[runDate] ?: 0f
-            val singleRunRiskAssessment = calculateRisk(run.distance, baseline)
-            val combinedRisk = generateCombinedRisk(singleRunRiskAssessment, acwrAssessment)
-            combinedRiskByRunID[runID] = combinedRisk
+        return AcwrAssessment(risk, ratio, "")
+    }
 
+    internal fun appendAcwrMap(
+        cachedAcwr: Map<LocalDate, AcwrAssessment>,
+        startDate: LocalDate,
+        overlapIndex: Int,
+        acuteLoadSeries: List<Float>,
+        chronicLoadSeries: List<Float>
+    ): Map<LocalDate, AcwrAssessment> {
+
+        val result = cachedAcwr
+            .entries
+            .filter { entry ->
+                ChronoUnit.DAYS.between(startDate, entry.key) < overlapIndex
+            }
+            .associate { it.toPair() }
+            .toMutableMap()
+
+        for (i in overlapIndex until acuteLoadSeries.size) {
+            val acute = acuteLoadSeries[i]
+            val chronic = chronicLoadSeries.getOrNull(i) ?: continue
+            val date = startDate.plusDays(i.toLong())
+
+            val assessment = computeAcwrAssessment(acute, chronic)
+            if (assessment != null) {
+                result[date] = assessment
+            }
         }
-        return UiAnalysisData(runAnalysis, graphData, combinedRiskByRunID)
+
+        return result
     }
 
     private fun generateCombinedRisk(runRisk: SingleRunRiskAssessment, acwr: AcwrAssessment?): CombinedRisk {
@@ -174,23 +330,32 @@ class AnalyzeRunData {
             .mapValues { (_, runsOnDay) -> runsOnDay.sumOf { it.distance.toDouble() }.toFloat() }
 
         return (0..ChronoUnit.DAYS.between(startDate, endDate)).map {
-            val date = startDate.plusDays(it)
-            dailyLoadMap[date] ?: 0f
+            dailyLoadMap[startDate.plusDays(it)] ?: 0f
         }
     }
 
-    internal fun getIqrCapValue(loads: List<Float>): Float {
-        if (loads.size < 4) return loads.maxOrNull() ?: Float.MAX_VALUE
-        val sortedLoads = loads.filter { it > 0 }.sorted()
-        if (sortedLoads.isEmpty()) return Float.MAX_VALUE
+    internal fun stableUpperBound(
+        values: List<Float>,
+        minSamples: Int = 4
+    ): Float {
+        if (values.size < minSamples) {
+            return values.maxOrNull() ?: 0f
+        }
 
-        val q1Index = (sortedLoads.size * 0.25).toInt()
-        val q3Index = (sortedLoads.size * 0.75).toInt()
-        val q1 = sortedLoads[q1Index]
-        val q3 = sortedLoads[q3Index]
+        val sorted = values.sorted()
+
+        val q1Index = (sorted.size * 0.25).toInt()
+        val q3Index = (sorted.size * 0.75).toInt()
+
+        val q1 = sorted[q1Index]
+        val q3 = sorted[q3Index]
         val iqr = q3 - q1
-        return q3 + 1.5f * iqr
+
+        val upperFence = q3 + 1.5f * iqr
+
+        return sorted.filter { it <= upperFence }.maxOrNull() ?: 0f
     }
+
 
     internal fun calculateRollingSum(data: List<Float>, window: Int): List<Float> {
         val result = mutableListOf<Float>()
@@ -201,6 +366,29 @@ class AnalyzeRunData {
         }
         return result
     }
+
+    internal fun appendRollingSum(
+        previousData: List<Float>,
+        newData: List<Float>,
+        window: Int
+    ): List<Float> {
+        val result = mutableListOf<Float>()
+
+        val buffer = previousData
+            .takeLast(window - 1)
+            .toMutableList()
+
+        newData.forEach { value ->
+            buffer.add(value)
+            if (buffer.size > window) {
+                buffer.removeAt(0)
+            }
+            result.add(buffer.sum())
+        }
+
+        return result
+    }
+
 
     internal fun calculateEwma(data: List<Float>, span: Int): List<Float> {
         val alpha = 2.0f / (span + 1.0f)
@@ -214,6 +402,25 @@ class AnalyzeRunData {
         }
         return ewma
     }
+
+    internal fun appendEwma(
+        lastEwma: Float,
+        newData: List<Float>,
+        span: Int
+    ): List<Float> {
+        val alpha = 2f / (span + 1f)
+        val result = mutableListOf<Float>()
+
+        var prev = lastEwma
+        newData.forEach { value ->
+            val next = alpha * value + (1f - alpha) * prev
+            result.add(next)
+            prev = next
+        }
+
+        return result
+    }
+
 
     private fun calculateRisk(distance: Float, baseline: Float): SingleRunRiskAssessment {
         if (baseline <= 0f) {
@@ -229,23 +436,86 @@ class AnalyzeRunData {
     }
 
     internal fun getStableLongestRun(runs: List<Run>): Float {
-        if (runs.size < 4) {
-            return runs.maxOfOrNull { it.distance } ?: 0f
+        return stableUpperBound(runs.map { it.distance })
+    }
+
+    internal fun createRollingLoadCapSeries(
+        dailyLoads: List<Float>,
+        window: Int = 30
+    ): List<Float> {
+        return dailyLoads.indices.map { i ->
+            val start = max(0, i - window)
+            val precedingLoads = dailyLoads
+                .subList(start, i)
+                .filter { it > 0f }
+
+            stableUpperBound(precedingLoads)
+        }
+    }
+
+    internal fun appendRollingLoadCaps(
+        previousDailyLoads: List<Float>,
+        newDailyLoads: List<Float>,
+        window: Int = 30
+    ): List<Float> {
+        val caps = mutableListOf<Float>()
+
+        val rollingWindow = previousDailyLoads
+            .takeLast(window)
+            .toMutableList()
+
+        newDailyLoads.forEach { load ->
+            val cap = stableUpperBound(rollingWindow.filter { it > 0f })
+            caps.add(cap)
+
+            rollingWindow.add(load)
+            if (rollingWindow.size > window) {
+                rollingWindow.removeAt(0)
+            }
         }
 
-        val distances = runs.map { it.distance }.sorted()
-
-        val q1Index = (distances.size * 0.25).toInt()
-        val q3Index = (distances.size * 0.75).toInt() // Corrected to use sortedDistances
-        val q1 = distances[q1Index]
-        val q3 = distances[q3Index]
-        val iqr = q3 - q1
-
-        val upperFence = q3 + 1.5f * iqr
-
-        val normalRuns = distances.filter { it <= upperFence }
-        return normalRuns.maxOrNull() ?: 0f
+        return caps
     }
+
+    internal fun appendRawLongestRunThresholds(
+        overlapIndex: Int,
+        startDate: LocalDate,
+        totalDays: Int,
+        runs: List<Run>
+    ): List<Float> {
+
+        val rawThresholds = mutableListOf<Float>()
+
+        val runsByDate = runs
+            .map { OffsetDateTime.parse(it.startDateLocal).toLocalDate() to it }
+            .sortedBy { it.first }
+
+        var runStartIdx = 0
+
+        for (i in overlapIndex until totalDays) {
+            val date = startDate.plusDays(i.toLong())
+            val windowStart = date.minusDays(30)
+
+            while (
+                runStartIdx < runsByDate.size &&
+                runsByDate[runStartIdx].first.isBefore(windowStart)
+            ) {
+                runStartIdx++
+            }
+
+            val relevantRuns = runsByDate
+                .drop(runStartIdx)
+                .takeWhile { (d, _) -> d.isBefore(date) }
+                .map { it.second }
+
+            val threshold = if (relevantRuns.isEmpty()) 0f else getStableLongestRun(relevantRuns) * 1.1f
+            rawThresholds.add(threshold)
+        }
+
+        return rawThresholds
+    }
+
+
 }
 
 internal fun mergeRuns(runs: List<Run>): List<Run> {

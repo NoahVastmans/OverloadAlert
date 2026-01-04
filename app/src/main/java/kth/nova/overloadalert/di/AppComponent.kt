@@ -8,8 +8,10 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kth.nova.overloadalert.data.AuthRepository
 import kth.nova.overloadalert.data.CalendarSyncService
 import kth.nova.overloadalert.data.LocalDateAdapter
+import kth.nova.overloadalert.data.CombinedRiskAdapter
 import kth.nova.overloadalert.data.RunningRepository
 import kth.nova.overloadalert.data.TokenManager
+import kth.nova.overloadalert.data.local.AnalysisStorage
 import kth.nova.overloadalert.data.local.AppDatabase
 import kth.nova.overloadalert.data.local.PlanStorage
 import kth.nova.overloadalert.data.remote.GoogleAuthRepository
@@ -46,6 +48,7 @@ class AppComponent(context: Context) {
 
     private val moshi = Moshi.Builder()
         .add(LocalDateAdapter())
+        .add(CombinedRiskAdapter())
         .add(KotlinJsonAdapterFactory())
         .build()
 
@@ -131,6 +134,7 @@ class AppComponent(context: Context) {
     }
 
     val planStorage: PlanStorage by lazy { PlanStorage(context, moshi) }
+    val analysisStorage by lazy { AnalysisStorage(context, moshi) }
 
     val authRepository: AuthRepository by lazy { AuthRepository(stravaAuthService, tokenManager) }
     val runningRepository: RunningRepository by lazy { RunningRepository(appDatabase.runDao(), stravaApiService, tokenManager) }
@@ -144,7 +148,7 @@ class AppComponent(context: Context) {
         CalendarSyncService(appDatabase.calendarSyncDao(), googleCalendarRepository, googleAuthRepository, planStorage) 
     }
 
-    val analysisRepository: AnalysisRepository by lazy { AnalysisRepository(runningRepository, analyzeRunData, appScope) }
+    val analysisRepository: AnalysisRepository by lazy { AnalysisRepository(runningRepository, analyzeRunData, analysisStorage, appScope) }
     val planRepository: PlanRepository by lazy {
         PlanRepository(
             analysisRepository, 
