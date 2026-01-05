@@ -7,6 +7,7 @@ import java.time.LocalDate
  * This is cached to prevent re-calculating the entire history on every app start.
  */
 data class CachedAnalysis(
+    val cacheDate: LocalDate, // The date this cache was generated
     val lastRunHash: Int,
     val dailyLoads: List<Float>,
     val cappedDailyLoads: List<Float>,

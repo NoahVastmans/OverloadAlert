@@ -26,30 +26,35 @@ class AnalysisRepository(
 ) {
 
     val latestAnalysis: StateFlow<UiAnalysisData?> = runningRepository.getAllRuns()
-        .map { runs -> AnalysisKey( runs.hashCode()) }
-        .distinctUntilChanged()
+        .map { runs -> AnalysisKey(runs.hashCode()) } // Create a key from the current runs
+        .distinctUntilChanged() // Only proceed if the runs have actually changed
         .flatMapLatest { key ->
             flow {
                 val cached = analysisStorage.load()
-                val storedKey = cached?.let { AnalysisKey( it.lastRunHash) } // Construct a comparable key
+                val today = LocalDate.now()
+
+                // Determine if the cache is stale by checking the hash OR if the day has changed.
+                val isStale = cached == null ||
+                              key.runIdsHash != cached.lastRunHash ||
+                              cached.cacheDate.isBefore(today)
 
                 val runs = runningRepository.getAllRuns().first()
 
-                if (key == storedKey) {
-                    Log.d("AnalysisRepository", "Analysis cache is up to date.")
-                    emit(analyzeRunData.deriveUiDataFromCache(cached, runs, LocalDate.now()))
-                } else {
+                if (isStale) {
                     Log.d("AnalysisRepository", "Analysis cache is stale. Recalculating...")
-                    val overlapDate = LocalDate.now().minusDays(5)
+                    val overlapDate = today.minusDays(5)
                     val updatedCache = analyzeRunData.updateAnalysisFrom(cached, runs, overlapDate)
                     analysisStorage.save(updatedCache)
-                    emit(analyzeRunData.deriveUiDataFromCache(updatedCache, runs, LocalDate.now()))
+                    emit(analyzeRunData.deriveUiDataFromCache(updatedCache, runs, today))
+                } else {
+                    Log.d("AnalysisRepository", "Analysis cache is up to date.")
+                    emit(analyzeRunData.deriveUiDataFromCache(cached, runs, today))
                 }
             }
         }
         .stateIn(
             scope = coroutineScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = null // Start with null to ensure the flow triggers
+            initialValue = null
         )
 }

@@ -113,6 +113,7 @@ class AnalyzeRunData {
 
 
         return CachedAnalysis(
+            cacheDate = LocalDate.now(),
             lastRunHash = runs.hashCode(),
             dailyLoads = combinedDailyLoads,
             cappedDailyLoads = cappedDailyLoads,
@@ -227,6 +228,7 @@ class AnalyzeRunData {
             }
 
         return CachedAnalysis(
+            cacheDate = LocalDate.now(),
             lastRunHash = runs.hashCode(),
             dailyLoads = dailyLoads,
             cappedDailyLoads = cappedDailyLoads,
