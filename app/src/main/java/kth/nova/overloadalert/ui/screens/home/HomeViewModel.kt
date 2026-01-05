@@ -6,54 +6,65 @@ import androidx.lifecycle.viewModelScope
 import kth.nova.overloadalert.data.RunningRepository
 import kth.nova.overloadalert.data.TokenManager
 import kth.nova.overloadalert.domain.repository.AnalysisRepository
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class HomeViewModel(
-    analysisRepository: AnalysisRepository, // The new single source of truth
+    analysisRepository: AnalysisRepository,
     private val runningRepository: RunningRepository,
-    private val tokenManager: TokenManager
+    private val tokenManager: TokenManager,
+    private val mapper: HomeUiMapper
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     init {
-        analysisRepository.latestAnalysis
-            .onEach { analysisData ->
-                _uiState.update {
-                    it.copy(
-                        runAnalysis = analysisData?.runAnalysis
-                    )
-                }
+        // Combine analysis data and last sync time into a single UI state
+        combine(
+            analysisRepository.latestAnalysis,
+            tokenManager.lastSyncTimestamp
+        ) { analysisData, lastSyncTime ->
+            if (analysisData == null) {
+                HomeUiState(isLoading = false) // Show "No data" message
+            } else {
+                HomeUiState(
+                    isLoading = false,
+                    riskCard = analysisData.runAnalysis?.combinedRisk?.let { mapper.mapRiskCard(it) },
+                    recommendationCard = analysisData.runAnalysis?.let { mapper.mapRecommendationCard(it) },
+                    lastSyncLabel = formatSyncTime(lastSyncTime)
+                )
             }
-            .launchIn(viewModelScope)
+        }.onEach { newState ->
+            _uiState.update { newState }
+        }.launchIn(viewModelScope)
 
-        tokenManager.lastSyncTimestamp
-            .onEach { lastSyncTime ->
-                _uiState.update { it.copy(lastSyncTime = lastSyncTime) }
+        // Separate loop to update the time-sensitive sync label every minute
+        viewModelScope.launch {
+            while (true) {
+                delay(60000L)
+                val lastSyncTime = tokenManager.lastSyncTimestamp.value
+                _uiState.update { it.copy(lastSyncLabel = formatSyncTime(lastSyncTime)) }
             }
-            .launchIn(viewModelScope)
+        }
     }
 
     fun refreshData() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, syncErrorMessage = null) }
             val result = runningRepository.syncRuns()
+            val errorMessage = result.exceptionOrNull()?.message
 
-            _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    syncErrorMessage = result.exceptionOrNull()?.message
-                )
-            }
-
-            // On success, the AnalysisRepository's flow will automatically trigger an update.
+            // The analysis flow will update the main content automatically.
+            // We only need to handle the loading and error states here.
+            _uiState.update { it.copy(isLoading = false, syncErrorMessage = errorMessage) }
         }
     }
 
@@ -61,15 +72,30 @@ class HomeViewModel(
         _uiState.update { it.copy(syncErrorMessage = null) }
     }
 
+    private fun formatSyncTime(lastSyncTime: Long?): String? {
+        if (lastSyncTime == null || lastSyncTime <= 0) return null
+        val minutesAgo = (System.currentTimeMillis() - lastSyncTime) / 60000
+        return when {
+            minutesAgo < 1 -> "Last synced: just now"
+            minutesAgo == 1L -> "Last synced: 1 min ago"
+            else -> "Last synced: $minutesAgo min ago"
+        }
+    }
+
     companion object {
         fun provideFactory(
             analysisRepository: AnalysisRepository,
             runningRepository: RunningRepository,
-            tokenManager: TokenManager
+            tokenManager: TokenManager,
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return HomeViewModel(analysisRepository, runningRepository, tokenManager) as T
+                return HomeViewModel(
+                    analysisRepository,
+                    runningRepository,
+                    tokenManager,
+                    HomeUiMapper()
+                ) as T
             }
         }
     }
