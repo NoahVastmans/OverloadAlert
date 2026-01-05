@@ -11,7 +11,6 @@ data class RunAnalysis(
     val combinedRisk: CombinedRisk,
     val safeLongRun: Float = 0f,
     val minRecommendedTodaysRun: Float = 0f,
-    // Expose raw assessments for policy decisions
     val acwrAssessment: AcwrAssessment? = null,
     val singleRunRiskAssessment: SingleRunRiskAssessment? = null
 )

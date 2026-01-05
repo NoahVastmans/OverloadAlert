@@ -20,7 +20,7 @@ class AnalyzeRunData {
 
         val startDate = runs.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
         val cachedAnalysis = performFullAnalysis(runs, startDate, referenceDate)
-        return deriveUiDataFromCache(cachedAnalysis, runs, referenceDate)
+        return deriveUiDataFromCache(cachedAnalysis, referenceDate)
     }
 
     fun updateAnalysisFrom(cached: CachedAnalysis?, runs: List<Run>, overlapDate: LocalDate): CachedAnalysis {
@@ -125,7 +125,7 @@ class AnalyzeRunData {
         )
     }
 
-    fun deriveUiDataFromCache(cached: CachedAnalysis?, runs: List<Run> , referenceDate: LocalDate): UiAnalysisData {
+    fun deriveUiDataFromCache(cached: CachedAnalysis? , referenceDate: LocalDate): UiAnalysisData {
         if (cached == null) return UiAnalysisData(null, null)
 
         val today = referenceDate
@@ -134,21 +134,16 @@ class AnalyzeRunData {
         val chronicLoadSeries = cached.chronicLoadSeries
         val acwrByDate = cached.acwrByDate
         val smoothedLongestRunThresholds = cached.smoothedLongestRunThresholds
+        val combinedRiskByRunID = cached.combinedRiskByRunID
 
         val acuteLoad = acuteLoadSeries.lastOrNull() ?: 0f
         val chronicLoad = chronicLoadSeries.lastOrNull() ?: 0f
 
-        val lastRun = runs.lastOrNull()
-        val thirtyDaysBefore = lastRun?.let { OffsetDateTime.parse(it.startDateLocal).toLocalDate().minusDays(30) } ?: today.minusDays(30)
+        val stableBaseline = smoothedLongestRunThresholds.lastOrNull() ?: 0f
+        val combinedRisk = combinedRiskByRunID.values.lastOrNull()
+            ?: CombinedRisk("No Data", "", Color.Gray)
 
-        val relevantPrecedingRuns = runs.filter { run ->
-            val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
-            runDate.isAfter(thirtyDaysBefore) && runDate.isBefore(today.plusDays(1))
-        }
-
-        val stableBaseline = getStableLongestRun(relevantPrecedingRuns)
-        val singleRunRisk = lastRun?.let { calculateRisk(it.distance, stableBaseline) } ?: SingleRunRiskAssessment(RiskLevel.NONE, "")
-        val combinedRisk = generateCombinedRisk(singleRunRisk, acwrByDate[today])
+        val singleRunRisk = combinedRisk.toSingleRunRisk()
         val safeLongestRunForDisplay = stableBaseline * 1.1f
 
 
@@ -175,8 +170,6 @@ class AnalyzeRunData {
         val graphData = GraphData(dailyLoadBars, longestRunThresholdLine, finalDateLabels, acuteLoadLine, chronicLoadLine)
 
         // Data For HistoryScreen
-        val combinedRiskByRunID = cached.combinedRiskByRunID
-
         return UiAnalysisData(runAnalysis, graphData, combinedRiskByRunID)
     }
 
@@ -326,6 +319,18 @@ class AnalyzeRunData {
             }
         }
     }
+
+    fun CombinedRisk.toSingleRunRisk(): SingleRunRiskAssessment {
+        val level = when {
+            title.contains("Extreme Spike") -> RiskLevel.VERY_HIGH
+            title.contains("Large Spike") -> RiskLevel.HIGH
+            title.contains("Moderate Spike") -> RiskLevel.MODERATE
+            else -> RiskLevel.NONE
+        }
+
+        return SingleRunRiskAssessment(level, "")
+    }
+
 
     internal fun createDailyLoadSeries(runs: List<Run>, startDate: LocalDate, endDate: LocalDate): List<Float> {
         val dailyLoadMap = runs.groupBy { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }

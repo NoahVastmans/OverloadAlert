@@ -45,10 +45,10 @@ class AnalysisRepository(
                     val overlapDate = today.minusDays(5)
                     val updatedCache = analyzeRunData.updateAnalysisFrom(cached, runs, overlapDate)
                     analysisStorage.save(updatedCache)
-                    emit(analyzeRunData.deriveUiDataFromCache(updatedCache, runs, today))
+                    emit(analyzeRunData.deriveUiDataFromCache(updatedCache, today))
                 } else {
                     Log.d("AnalysisRepository", "Analysis cache is up to date.")
-                    emit(analyzeRunData.deriveUiDataFromCache(cached, runs, today))
+                    emit(analyzeRunData.deriveUiDataFromCache(cached, today))
                 }
             }
         }
