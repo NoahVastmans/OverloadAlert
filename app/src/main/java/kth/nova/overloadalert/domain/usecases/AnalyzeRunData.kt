@@ -345,11 +345,16 @@ class AnalyzeRunData {
         values: List<Float>,
         minSamples: Int = 4
     ): Float {
-        if (values.size < minSamples) {
-            return values.maxOrNull() ?: 0f
+        val nonZero = values.filter { it > 0f }
+
+        if (nonZero.isEmpty()) {
+            return 0f
         }
 
-        val sorted = values.sorted()
+        if (nonZero.size < minSamples) {
+            return nonZero.maxOrNull() ?: 0f
+        }
+        val sorted = nonZero.sorted()
 
         val q1Index = (sorted.size * 0.25).toInt()
         val q3Index = (sorted.size * 0.75).toInt()
