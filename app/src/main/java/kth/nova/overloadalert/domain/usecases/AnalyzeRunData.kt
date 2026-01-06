@@ -13,103 +13,95 @@ import java.time.temporal.ChronoUnit
 import kotlin.math.max
 import kotlin.math.min
 
+enum class AnalysisMode {
+    PERSISTENT, SIMULATION
+}
+
 class AnalyzeRunData {
 
-    operator fun invoke(runs: List<Run>, referenceDate: LocalDate): UiAnalysisData {
-        if (runs.isEmpty()) return UiAnalysisData(null, null, emptyMap())
+//    operator fun invoke(runs: List<Run>, referenceDate: LocalDate): UiAnalysisData {
+//        if (runs.isEmpty()) return UiAnalysisData(null, null, emptyMap())
+//
+//        val startDate = runs.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
+//        val cachedAnalysis = performFullAnalysis(runs, startDate, referenceDate)
+//        return deriveUiDataFromCache(cachedAnalysis, referenceDate)
+//    }
 
-        val startDate = runs.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
-        val cachedAnalysis = performFullAnalysis(runs, startDate, referenceDate)
-        return deriveUiDataFromCache(cachedAnalysis, referenceDate)
+    fun getAnalysisForFutureDate(cached: CachedAnalysis, newRuns: List<Run>, targetDate: LocalDate): UiAnalysisData {
+        val futureCachedAnalysis = updateAnalysisFrom(cached, newRuns, targetDate, AnalysisMode.SIMULATION)
+        return deriveUiDataFromCache(futureCachedAnalysis, targetDate)
     }
 
-    fun updateAnalysisFrom(cached: CachedAnalysis?, runs: List<Run>, overlapDate: LocalDate): CachedAnalysis {
+    fun updateAnalysisFrom(cached: CachedAnalysis?, runs: List<Run>, overlapDate: LocalDate, mode: AnalysisMode): CachedAnalysis {
         if (cached == null) {
-            val startDate = runs.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
+            val startDate = runs.minOfOrNull { OffsetDateTime.parse(it.startDateLocal).toLocalDate() } ?: LocalDate.now()
             return performFullAnalysis(runs, startDate, LocalDate.now())
         }
 
-        val overlapIndex = ChronoUnit.DAYS.between(cached.acwrByDate.keys.minOrNull() ?: overlapDate, overlapDate).toInt()
-        if (overlapIndex < 0) {
-            val startDate = runs.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
-            return performFullAnalysis(runs, startDate, LocalDate.now())
+        val startDate = cached.acwrByDate.keys.minOrNull()!!
+        val overlapIndex = ChronoUnit.DAYS.between(startDate, overlapDate).toInt().coerceAtLeast(0)
+
+        val seriesEndDate = if (mode == AnalysisMode.SIMULATION) {
+            runs.maxOfOrNull { OffsetDateTime.parse(it.startDateLocal).toLocalDate() } ?: overlapDate
+        } else {
+            LocalDate.now()
         }
 
         val truncatedDailyLoads = cached.dailyLoads.take(overlapIndex)
         val updatedRuns = runs.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(overlapDate.minusDays(1)) }
-        val newDailyLoads = createDailyLoadSeries(updatedRuns, overlapDate, LocalDate.now())
+        val newDailyLoads = createDailyLoadSeries(updatedRuns, overlapDate, seriesEndDate)
 
         val combinedDailyLoads = truncatedDailyLoads + newDailyLoads
 
         val previousCappedLoads = cached.cappedDailyLoads.take(overlapIndex)
         val newCaps = appendRollingLoadCaps(truncatedDailyLoads, newDailyLoads)
-        val newCappedDailyLoads =
-            newDailyLoads.mapIndexed { i, load ->
-                val cap = newCaps[i]
-                if (cap > 0f) load.coerceAtMost(cap) else load
-            }
+        val newCappedDailyLoads = newDailyLoads.mapIndexed { i, load ->
+            val cap = newCaps[i]
+            if (cap > 0f) load.coerceAtMost(cap) else load
+        }
         val cappedDailyLoads = previousCappedLoads + newCappedDailyLoads
 
         val previousAcute = cached.acuteLoadSeries.take(overlapIndex)
-        val newAcute = appendRollingSum(
-            previousData = cached.dailyLoads.take(overlapIndex),
-            newData = newDailyLoads,
-            window = 7
-        )
+        val newAcute = appendRollingSum(cached.dailyLoads.take(overlapIndex), newDailyLoads, 7)
         val acuteLoadSeries = previousAcute + newAcute
 
         val previousChronic = cached.chronicLoadSeries.take(overlapIndex)
         val lastChronic = previousChronic.lastOrNull() ?: 0f
 
-        val newChronic = appendEwma(
-            lastEwma = lastChronic,
-            newData = newCappedDailyLoads,
-            span = 28
-        )
+        val newChronic = appendEwma(lastChronic, newAcute, 28)
 
         val chronicLoadSeries = previousChronic + newChronic
 
-        val startDate = cached.acwrByDate.keys.minOrNull() ?: overlapDate
-        val acwrByDate = appendAcwrMap(
-            cachedAcwr = cached.acwrByDate,
-            startDate = startDate,
-            overlapIndex = overlapIndex,
-            acuteLoadSeries = acuteLoadSeries,
-            chronicLoadSeries = chronicLoadSeries
-        )
+        val acwrByDate = appendAcwrMap(cached.acwrByDate, startDate, overlapIndex, acuteLoadSeries, chronicLoadSeries)
 
-        val totalDays = ChronoUnit.DAYS.between(startDate, LocalDate.now()).toInt() + 1
-        val rawThresholds = appendRawLongestRunThresholds(overlapIndex, startDate, totalDays, runs)
-        val previousSmoothed = cached.smoothedLongestRunThresholds.lastOrNull() ?: 0f
+        var finalSmoothed = cached.smoothedLongestRunThresholds
+        var combinedRiskByRunID = cached.combinedRiskByRunID
 
-        val smoothedLongestRunThresholds =
-            appendEwma(
-                lastEwma = previousSmoothed,
-                newData = rawThresholds,
-                span = 7
-            )
-        val finalSmoothed = cached.smoothedLongestRunThresholds.take(overlapIndex) + smoothedLongestRunThresholds
+        if (mode == AnalysisMode.PERSISTENT) {
+            val totalDays = ChronoUnit.DAYS.between(startDate, LocalDate.now()).toInt() + 1
+            val rawThresholds = appendRawLongestRunThresholds(overlapIndex, startDate, totalDays, runs)
+            val previousSmoothed = cached.smoothedLongestRunThresholds.getOrNull(overlapIndex - 1) ?: 0f
+            val newSmoothedThresholds = appendEwma(previousSmoothed, rawThresholds, 7)
+            finalSmoothed = cached.smoothedLongestRunThresholds.take(overlapIndex) + newSmoothedThresholds
 
-        val truncatedCombinedRiskByRunID = cached.combinedRiskByRunID.filter { (runId, _) ->
-            val runDate = runs.find { it.id == runId }?.let { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
-            runDate?.isBefore(overlapDate) ?: true
-        }.toMutableMap()
+            val truncatedCombinedRiskByRunID = cached.combinedRiskByRunID.filter { (runId, _) ->
+                val runDate = runs.find { it.id == runId }
+                    ?.let { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
+                runDate?.isBefore(overlapDate) ?: true
+            }.toMutableMap()
 
-        // Build baseline map
-        val baselineByDate = smoothedLongestRunThresholds.indices.associate { i ->
-            startDate.plusDays(i.toLong()) to smoothedLongestRunThresholds[i]
+            // Build baseline map
+            val baselineByDate =
+                finalSmoothed.indices.associate { i -> startDate.plusDays(i.toLong()) to finalSmoothed[i] }
+
+            val newCombinedRiskByRunID = runs.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate() >= overlapDate }.associate { run ->
+                    val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
+                    val baseline = baselineByDate[runDate] ?: 0f
+                    val runSingleRisk = calculateRisk(run.distance, baseline)
+                    run.id to generateCombinedRisk(runSingleRisk, acwrByDate[runDate])
+                }
+            combinedRiskByRunID = truncatedCombinedRiskByRunID + newCombinedRiskByRunID
         }
-
-        val newCombinedRiskByRunID = mutableMapOf<Long, CombinedRisk>()
-        // Recompute risk for runs on or after overlapDate
-        runs.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate() >= overlapDate }
-            .forEach { run ->
-                val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
-                val baseline = baselineByDate[runDate] ?: 0f
-                val runSingleRisk = calculateRisk(run.distance, baseline)
-                newCombinedRiskByRunID[run.id] = generateCombinedRisk(runSingleRisk, acwrByDate[runDate])
-            }
-        val combinedRiskByRunID = truncatedCombinedRiskByRunID + newCombinedRiskByRunID
 
 
         return CachedAnalysis(
@@ -154,11 +146,7 @@ class AnalyzeRunData {
         val maxWeeklyLoad = max(0f, chronicLoad * 1.3f - todaysLoad)
         val minRecommendedTodaysRun = min(max(0f, chronicLoad * 0.8f - acuteLoad), safeLongestRunForDisplay * 0.5f)
 
-        val runAnalysis = RunAnalysis(
-            acuteLoad, chronicLoad, recommendedTodaysRun, maxWeeklyLoad,
-            combinedRisk, safeLongestRunForDisplay, minRecommendedTodaysRun,
-            acwrByDate[today], singleRunRisk
-        )
+        val runAnalysis = RunAnalysis(acuteLoad, chronicLoad, recommendedTodaysRun, maxWeeklyLoad, combinedRisk, safeLongestRunForDisplay, minRecommendedTodaysRun, acwrByDate[today], singleRunRisk)
 
         // Data For GraphsScreen
         val finalDateLabels = (0..29).map { today.minusDays(29L - it).dayOfMonth.toString() }
@@ -211,14 +199,12 @@ class AnalyzeRunData {
             startDate.plusDays(i.toLong()) to smoothedLongestRunThresholds[i]
         }
 
-        val combinedRiskByRunID = mutableMapOf<Long, CombinedRisk>()
-        // Recompute risk for runs on or after overlapDate
-        runs.forEach { run ->
-                val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
-                val baseline = baselineByDate[runDate] ?: 0f
-                val runSingleRisk = calculateRisk(run.distance, baseline)
-                combinedRiskByRunID[run.id] = generateCombinedRisk(runSingleRisk, acwrByDate[runDate])
-            }
+        val combinedRiskByRunID = runs.associate { run ->
+            val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
+            val baseline = baselineByDate[runDate] ?: 0f
+            val runSingleRisk = calculateRisk(run.distance, baseline)
+            run.id to generateCombinedRisk(runSingleRisk, acwrByDate[runDate])
+        }
 
         return CachedAnalysis(
             cacheDate = LocalDate.now(),

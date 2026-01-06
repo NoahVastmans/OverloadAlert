@@ -5,7 +5,8 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import kth.nova.overloadalert.data.RunningRepository
-import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
+import kth.nova.overloadalert.domain.repository.AnalysisRepository
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 
@@ -13,7 +14,7 @@ class SyncWorker(
     appContext: Context,
     workerParams: WorkerParameters,
     private val runningRepository: RunningRepository,
-    private val analyzeRunData: AnalyzeRunData
+    private val analysisRepository: AnalysisRepository // Changed dependency
 ) : CoroutineWorker(appContext, workerParams) {
 
     private val notificationHelper = NotificationHelper(appContext)
@@ -27,19 +28,18 @@ class SyncWorker(
 
             // Only send a notification if the sync was successful AND data actually changed.
             if (dataWasChanged) {
-                val allRuns = runningRepository.getAllRuns().first()
-                if (allRuns.size > 1) {
-                    val analysis = analyzeRunData(allRuns, LocalDate.now()) // Pass the current date for live analysis
+                // The analysisRepository flow will trigger an efficient, cached update automatically.
+                // We just need to get the latest result to decide on the notification.
+                val analysis = analysisRepository.latestAnalysis.filterNotNull().first()
 
-                    analysis.runAnalysis?.combinedRisk?.let { risk ->
-                        when (risk.title) {
-                            "Optimal", "De-training/Recovery" -> {
-                                notificationHelper.showEncouragementNotification(risk.title, risk.message)
-                            }
-                            else -> {
-                                // Any other title is considered a warning
-                                notificationHelper.showWarningNotification(risk.title, risk.message)
-                            }
+                analysis.runAnalysis?.combinedRisk?.let { risk ->
+                    when (risk.title) {
+                        "Optimal", "De-training/Recovery" -> {
+                            notificationHelper.showEncouragementNotification(risk.title, risk.message)
+                        }
+                        else -> {
+                            // Any other title is considered a warning
+                            notificationHelper.showWarningNotification(risk.title, risk.message)
                         }
                     }
                 }

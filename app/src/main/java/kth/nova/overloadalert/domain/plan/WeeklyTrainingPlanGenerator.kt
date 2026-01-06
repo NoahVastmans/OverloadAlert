@@ -2,6 +2,7 @@ package kth.nova.overloadalert.domain.plan
 
 import android.util.Log
 import kth.nova.overloadalert.data.local.Run
+import kth.nova.overloadalert.domain.model.CachedAnalysis
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -14,7 +15,7 @@ import kotlin.math.min
 
 class WeeklyTrainingPlanGenerator {
 
-    fun generate(input: PlanInput, allRuns: List<Run>, analyzeRunData: AnalyzeRunData): WeeklyTrainingPlan {
+    fun generate(input: PlanInput, allRuns: List<Run>, analyzeRunData: AnalyzeRunData, cachedAnalysis: CachedAnalysis): WeeklyTrainingPlan {
         val today = LocalDate.now()
         val shouldRecompute = shouldRecomputeStructure(input, allRuns, today)
         
@@ -32,7 +33,7 @@ class WeeklyTrainingPlanGenerator {
         if (input.recentData.riskPhase != RiskPhase.DELOAD || input.recentData.riskPhase != RiskPhase.REBUILDING) {
             for (i in 0 until 10) {
                 val before = dailyDistances.toMap()
-                val (validatedDistances, safeRanges) = validateAndAdjustPlan(dailyDistances.toMutableMap(), allRuns, analyzeRunData)
+                val (validatedDistances, safeRanges) = validateAndAdjustPlan(dailyDistances.toMutableMap(), analyzeRunData, cachedAnalysis)
                 dailyDistances = rebalanceVolume(validatedDistances.toMutableMap(), weeklyVolume, runTypes, safeRanges)
 
                 if (maxDelta(dailyDistances, before) < 0.1) {break}
@@ -187,16 +188,14 @@ class WeeklyTrainingPlanGenerator {
 
     private fun validateAndAdjustPlan(
         distances: MutableMap<DayOfWeek, Float>,
-        allRuns: List<Run>,
-        analyzeRunData: AnalyzeRunData
+        analyzeRunData: AnalyzeRunData,
+        cachedAnalysis: CachedAnalysis
     ): Pair<Map<DayOfWeek, Float>, Map<DayOfWeek, Pair<Float, Float>>> {
         val today = LocalDate.now()
         val dayValues = DayOfWeek.entries.toTypedArray()
         val todayIndex = today.dayOfWeek.value - 1
         val validationOrder = (0..6).map { dayValues[(todayIndex + it) % 7] }
-        val historicalRuns = allRuns.filter {
-            OffsetDateTime.parse(it.startDateLocal).toLocalDate().isBefore(today)
-        }
+
         val safeRanges = mutableMapOf<DayOfWeek, Pair<Float, Float>>()
 
         val simulatedRuns = mutableListOf<Run>()
@@ -204,11 +203,9 @@ class WeeklyTrainingPlanGenerator {
             val plannedDistance = distances[dayToValidate] ?: 0f
             if (plannedDistance == 0f) continue
 
-            val futureHistory = historicalRuns + simulatedRuns
             val simulatedDate = today.plusDays(validationOrder.indexOf(dayToValidate).toLong())
 
-            val analysisForDay =
-                analyzeRunData(futureHistory, simulatedDate).runAnalysis ?: continue
+            val analysisForDay = analyzeRunData.getAnalysisForFutureDate(cachedAnalysis, simulatedRuns, simulatedDate).runAnalysis ?: continue
 
             val minSafe = analysisForDay.minRecommendedTodaysRun
             val maxSafe = analysisForDay.recommendedTodaysRun

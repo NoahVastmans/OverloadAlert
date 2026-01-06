@@ -2,12 +2,15 @@ package kth.nova.overloadalert.domain.repository
 
 import android.util.Log
 import kth.nova.overloadalert.data.RunningRepository
+import kth.nova.overloadalert.data.CalendarSyncService
 import kth.nova.overloadalert.data.local.PlanStorage
+import kth.nova.overloadalert.data.local.Run
 import kth.nova.overloadalert.domain.model.AcwrRiskLevel
+import kth.nova.overloadalert.domain.model.CachedAnalysis
 import kth.nova.overloadalert.domain.model.RiskLevel
+import kth.nova.overloadalert.domain.model.RunAnalysis
 import kth.nova.overloadalert.domain.plan.*
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
-import kth.nova.overloadalert.data.CalendarSyncService
 import kth.nova.overloadalert.domain.usecases.HistoricalDataAnalyzer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,10 +18,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -41,36 +44,47 @@ class PlanRepository(
         // 1. Emit the stored plan first
         emit(planStorage.loadPlan())
 
-        // 2. Create the generation key flow
+        // 2. Create the generation key flow, now including the latest analysis
         val generationKeyFlow = combine(
             preferencesRepository.preferencesFlow,
-            runningRepository.getAllRuns()
-        ) { preferences, allRuns ->
+            runningRepository.getAllRuns(),
+            analysisRepository.latestAnalysis.filterNotNull(),
+            analysisRepository.latestCachedAnalysis.filterNotNull()
+        ) { preferences, allRuns, analysisData, cachedAnalysis ->
             val today = LocalDate.now()
             val runsForPlanning = allRuns.filter {
                 OffsetDateTime.parse(it.startDateLocal).toLocalDate().isBefore(today)
             }
-            PlanGenerationKey(
-                planningDate = today,
-                userPreferences = preferences,
-                historicalRunsHash = runsForPlanning.hashCode()
+            
+            PlanGenerationContext(
+                key = PlanGenerationKey(
+                    planningDate = today,
+                    userPreferences = preferences,
+                    historicalRunsHash = runsForPlanning.hashCode()
+                ),
+                runAnalysis = analysisData.runAnalysis,
+                runsForPlanning = runsForPlanning,
+                cachedAnalysis = cachedAnalysis
             )
-        }.distinctUntilChanged()
+        }.distinctUntilChanged { old, new -> 
+            // Only regenerate if the key changes. The analysis data is implicitly tied to the runs hash.
+            old.key == new.key 
+        }
 
         // 3. Observe the key and decide whether to regenerate
-        generationKeyFlow.flatMapLatest { key ->
+        generationKeyFlow.flatMapLatest { context ->
             val storedPlan = planStorage.loadPlan()
 
             // Decide if regeneration is needed
             val needsRegeneration = storedPlan == null ||
-                    storedPlan.startDate != key.planningDate ||
-                    storedPlan.userPreferences != key.userPreferences ||
-                    storedPlan.historicalRunsHash != key.historicalRunsHash
+                    storedPlan.startDate != context.key.planningDate ||
+                    storedPlan.userPreferences != context.key.userPreferences ||
+                    storedPlan.historicalRunsHash != context.key.historicalRunsHash
 
-            if (needsRegeneration) {
+            if (needsRegeneration && context.runAnalysis != null) {
                 Log.d("PlanRepository", "Regeneration needed. Generating new plan.")
-                // Generate and emit the new plan
-                generateAndStorePlan(key)
+                // Generate and emit the new plan, using the provided analysis
+                generateAndStorePlan(context)
             } else {
                 // No change, emit the stored plan again
                 Log.d("PlanRepository", "No regeneration needed. Emitting stored plan.")
@@ -81,18 +95,17 @@ class PlanRepository(
     }.stateIn(
         scope = coroutineScope,
         started = SharingStarted.Lazily,
-        initialValue = planStorage.loadPlan() // Start with the stored plan immediately
+        initialValue = planStorage.loadPlan()
     )
 
-    private suspend fun generateAndStorePlan(key: PlanGenerationKey): StateFlow<WeeklyTrainingPlan?> {
-        // This logic is extracted from the old combine block
-        val allRuns = runningRepository.getAllRuns().first()
-        val runsForPlanning = allRuns.filter {
-            OffsetDateTime.parse(it.startDateLocal).toLocalDate().isBefore(key.planningDate)
-        }
-
-        val prePlanAnalysis = analyzeRunData(runsForPlanning, key.planningDate)
-
+    private suspend fun generateAndStorePlan(
+        context: PlanGenerationContext
+    ): StateFlow<WeeklyTrainingPlan?> {
+        val key = context.key
+        val runAnalysis = context.runAnalysis!!
+        val runsForPlanning = context.runsForPlanning
+        
+        // We no longer call analyzeRunData() here. We use the passed runAnalysis.
         val relevantHistoricalRuns = runsForPlanning.filter {
             OffsetDateTime.parse(it.startDateLocal)
                 .toLocalDate()
@@ -101,12 +114,12 @@ class PlanRepository(
 
         val historicalData = historicalDataAnalyzer(relevantHistoricalRuns)
 
-        // --- Start of Risk/Progression Logic (unchanged) ---
+        // --- Start of Risk/Progression Logic ---
         val today = key.planningDate
         val override = planStorage.loadRiskOverride()
         val daysSinceOverride = override?.let { ChronoUnit.DAYS.between(it.startDate, today) }
 
-        val freshAcwrMultiplier = when (prePlanAnalysis.runAnalysis?.acwrAssessment?.riskLevel) {
+        val freshAcwrMultiplier = when (runAnalysis.acwrAssessment?.riskLevel) {
             AcwrRiskLevel.UNDERTRAINING -> 0.9f
             AcwrRiskLevel.OPTIMAL -> 1.0f
             AcwrRiskLevel.MODERATE_OVERTRAINING -> 0.85f
@@ -115,7 +128,7 @@ class PlanRepository(
         }
 
         val freshLongRunMultiplier =
-            when (prePlanAnalysis.runAnalysis?.singleRunRiskAssessment?.riskLevel) {
+            when (runAnalysis.singleRunRiskAssessment?.riskLevel) {
                 RiskLevel.NONE -> 1.1f
                 RiskLevel.MODERATE -> 1.0f
                 RiskLevel.HIGH -> 0.9f
@@ -188,8 +201,8 @@ class PlanRepository(
             null -> Unit
         }
 
-        val baseWeeklyVolume = prePlanAnalysis.runAnalysis?.chronicLoad ?: 0f
-        val baseMaxLongRun = prePlanAnalysis.runAnalysis?.safeLongRun ?: 0f
+        val baseWeeklyVolume = runAnalysis.chronicLoad
+        val baseMaxLongRun = runAnalysis.safeLongRun
         val adjustedWeeklyVolume = baseWeeklyVolume * acwrMultiplier
         val adjustedMaxLongRun = baseMaxLongRun * longRunMultiplier
 
@@ -208,11 +221,9 @@ class PlanRepository(
             previousPlan = planStorage.loadPlan()
         )
 
-        // --- End of Risk/Progression Logic ---
-
         // Generate and Store
-        val newPlan = planGenerator.generate(planInput, runsForPlanning, analyzeRunData)
-            .copy(historicalRunsHash = key.historicalRunsHash) // Tag with the hash
+        val newPlan = planGenerator.generate(planInput, runsForPlanning, analyzeRunData, context.cachedAnalysis)
+            .copy(historicalRunsHash = key.historicalRunsHash)
         planStorage.savePlan(newPlan)
 
         // Trigger Sync
@@ -220,11 +231,17 @@ class PlanRepository(
             calendarSyncService.syncPlanToCalendar(newPlan)
         }
 
-        // Return as a flow
         return flow { emit(newPlan) }.stateIn(coroutineScope)
     }
 
     suspend fun syncCalendar() {
         latestPlan.first()?.let { calendarSyncService.syncPlanToCalendar(it) }
     }
+    
+    private data class PlanGenerationContext(
+        val key: PlanGenerationKey,
+        val runAnalysis: RunAnalysis?,
+        val runsForPlanning: List<Run>,
+        val cachedAnalysis: CachedAnalysis
+    )
 }

@@ -12,7 +12,7 @@ class OverloadAlertApplication : Application(), Configuration.Provider {
 
     override val workManagerConfiguration: Configuration by lazy {
         Configuration.Builder()
-            .setWorkerFactory(MyWorkerFactory(appComponent.runningRepository, appComponent.analyzeRunData))
+            .setWorkerFactory(MyWorkerFactory(appComponent.runningRepository, appComponent.analysisRepository))
             .build()
     }
 
