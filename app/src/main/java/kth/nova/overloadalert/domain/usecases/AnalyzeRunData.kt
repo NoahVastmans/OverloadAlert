@@ -1,6 +1,5 @@
 package kth.nova.overloadalert.domain.usecases
 
-import android.util.Log
 import androidx.compose.ui.graphics.Color
 import com.github.mikephil.charting.data.BarEntry
 import com.github.mikephil.charting.data.Entry
@@ -51,43 +50,26 @@ class AnalyzeRunData {
         val cappedDailyLoads = previousCappedLoads + newCappedDailyLoads
 
         val previousAcute = cached.acuteLoadSeries.take(overlapIndex)
-        val newAcute = appendRollingSum(
-            previousData = cached.dailyLoads.take(overlapIndex),
-            newData = newDailyLoads,
-            window = 7
-        )
+        val newAcute = appendRollingSum(cached.dailyLoads.take(overlapIndex), newDailyLoads, 7)
         val acuteLoadSeries = previousAcute + newAcute
+
+        val newCappedAcuteLoad = appendRollingSum(previousCappedLoads, newCappedDailyLoads, window = 7)
 
         val previousChronic = cached.chronicLoadSeries.take(overlapIndex)
         val lastChronic = previousChronic.lastOrNull() ?: 0f
 
-        val newChronic = appendEwma(
-            lastEwma = lastChronic,
-            newData = newCappedDailyLoads,
-            span = 28
-        )
+        val newChronic = appendEwma(lastChronic, newCappedAcuteLoad, 28)
 
         val chronicLoadSeries = previousChronic + newChronic
 
         val startDate = cached.acwrByDate.keys.minOrNull() ?: overlapDate
-        val acwrByDate = appendAcwrMap(
-            cachedAcwr = cached.acwrByDate,
-            startDate = startDate,
-            overlapIndex = overlapIndex,
-            acuteLoadSeries = acuteLoadSeries,
-            chronicLoadSeries = chronicLoadSeries
-        )
+        val acwrByDate = appendAcwrMap(cached.acwrByDate, startDate, overlapIndex, acuteLoadSeries, chronicLoadSeries)
 
         val totalDays = ChronoUnit.DAYS.between(startDate, LocalDate.now()).toInt() + 1
         val rawThresholds = appendRawLongestRunThresholds(overlapIndex, startDate, totalDays, runs)
         val previousSmoothed = cached.smoothedLongestRunThresholds.lastOrNull() ?: 0f
 
-        val smoothedLongestRunThresholds =
-            appendEwma(
-                lastEwma = previousSmoothed,
-                newData = rawThresholds,
-                span = 7
-            )
+        val smoothedLongestRunThresholds = appendEwma(previousSmoothed, rawThresholds, 7)
         val finalSmoothed = cached.smoothedLongestRunThresholds.take(overlapIndex) + smoothedLongestRunThresholds
 
         val truncatedCombinedRiskByRunID = cached.combinedRiskByRunID.filter { (runId, _) ->
@@ -144,7 +126,7 @@ class AnalyzeRunData {
             ?: CombinedRisk("No Data", "", Color.Gray)
 
         val singleRunRisk = combinedRisk.toSingleRunRisk()
-        val safeLongestRunForDisplay = stableBaseline * 1.1f
+        val safeLongestRunForDisplay = stableBaseline
 
 
         val todaysLoad = dailyLoads.lastOrNull() ?: 0f
