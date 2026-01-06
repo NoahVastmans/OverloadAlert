@@ -218,7 +218,7 @@ class PlanRepository(
         )
 
         // Generate and Store
-        val newPlan = planGenerator.generate(planInput, runsForPlanning, analyzeRunData)
+        val newPlan = planGenerator.generate(planInput, runsForPlanning, analyzeRunData, context.cachedAnalysis)
             .copy(historicalRunsHash = key.historicalRunsHash)
         planStorage.savePlan(newPlan)
 

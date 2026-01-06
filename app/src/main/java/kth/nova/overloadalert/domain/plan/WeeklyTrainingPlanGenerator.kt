@@ -2,6 +2,7 @@ package kth.nova.overloadalert.domain.plan
 
 import android.util.Log
 import kth.nova.overloadalert.data.local.Run
+import kth.nova.overloadalert.domain.model.CachedAnalysis
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -14,7 +15,7 @@ import kotlin.math.min
 
 class WeeklyTrainingPlanGenerator {
 
-    fun generate(input: PlanInput, allRuns: List<Run>, analyzeRunData: AnalyzeRunData): WeeklyTrainingPlan {
+    fun generate(input: PlanInput, allRuns: List<Run>, analyzeRunData: AnalyzeRunData, cachedAnalysis: CachedAnalysis): WeeklyTrainingPlan {
         val today = LocalDate.now()
         val shouldRecompute = shouldRecomputeStructure(input, allRuns, today)
         
@@ -32,7 +33,7 @@ class WeeklyTrainingPlanGenerator {
         if (input.recentData.riskPhase != RiskPhase.DELOAD || input.recentData.riskPhase != RiskPhase.REBUILDING) {
             for (i in 0 until 10) {
                 val before = dailyDistances.toMap()
-                val (validatedDistances, safeRanges) = validateAndAdjustPlan(dailyDistances.toMutableMap(), allRuns, analyzeRunData)
+                val (validatedDistances, safeRanges) = validateAndAdjustPlan(dailyDistances.toMutableMap(), analyzeRunData, cachedAnalysis)
                 dailyDistances = rebalanceVolume(validatedDistances.toMutableMap(), weeklyVolume, runTypes, safeRanges)
 
                 if (maxDelta(dailyDistances, before) < 0.1) {break}
@@ -130,7 +131,7 @@ class WeeklyTrainingPlanGenerator {
 
         // Determine order and min/max targets
         val add = discrepancy > 0
-        var remaining = kotlin.math.abs(discrepancy)
+        var remaining = abs(discrepancy)
 
         val processOrder = if (add) listOf(shortDays, moderateDays, longDays)
         else listOf(longDays, moderateDays, shortDays)
@@ -187,36 +188,32 @@ class WeeklyTrainingPlanGenerator {
 
     private fun validateAndAdjustPlan(
         distances: MutableMap<DayOfWeek, Float>,
-        allRuns: List<Run>,
-        analyzeRunData: AnalyzeRunData
+        analyzeRunData: AnalyzeRunData,
+        cachedAnalysis: CachedAnalysis
     ): Pair<Map<DayOfWeek, Float>, Map<DayOfWeek, Pair<Float, Float>>> {
         val today = LocalDate.now()
         val dayValues = DayOfWeek.entries.toTypedArray()
         val todayIndex = today.dayOfWeek.value - 1
         val validationOrder = (0..6).map { dayValues[(todayIndex + it) % 7] }
-        val historicalRuns = allRuns.filter {
-            OffsetDateTime.parse(it.startDateLocal).toLocalDate().isBefore(today)
-        }
         val safeRanges = mutableMapOf<DayOfWeek, Pair<Float, Float>>()
 
         val simulatedRuns = mutableListOf<Run>()
         for (dayToValidate in validationOrder) {
             val plannedDistance = distances[dayToValidate] ?: 0f
-            if (plannedDistance == 0f) continue
 
-            val futureHistory = historicalRuns + simulatedRuns
             val simulatedDate = today.plusDays(validationOrder.indexOf(dayToValidate).toLong())
 
-            val analysisForDay =
-                analyzeRunData(futureHistory, simulatedDate).runAnalysis ?: continue
+            val analysisForDay = analyzeRunData.getAnalysisForFutureDate(cachedAnalysis, simulatedRuns, simulatedDate).runAnalysis ?: continue
 
-            val minSafe = analysisForDay.minRecommendedTodaysRun
-            val maxSafe = analysisForDay.recommendedTodaysRun
-            safeRanges[dayToValidate] = minSafe to maxSafe
+            var adjustedDistance = 0f
+            if (plannedDistance != 0f) {
+                val minSafe = analysisForDay.minRecommendedTodaysRun
+                val maxSafe = analysisForDay.recommendedTodaysRun
+                safeRanges[dayToValidate] = minSafe to maxSafe
 
-            val adjustedDistance = plannedDistance.coerceIn(minSafe, maxSafe)
-            Log.d("WeeklyTrainingPlanGenerator", "Adjusted distance for $dayToValidate: $adjustedDistance, planned: $plannedDistance, min: $minSafe, max: $maxSafe")
-            distances[dayToValidate] = adjustedDistance
+                adjustedDistance = plannedDistance.coerceIn(minSafe, maxSafe)
+                distances[dayToValidate] = adjustedDistance
+            }
             val movingTimes = (adjustedDistance * 5).toInt()
 
             simulatedRuns.add(

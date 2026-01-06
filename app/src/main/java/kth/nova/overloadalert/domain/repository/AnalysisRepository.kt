@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kth.nova.overloadalert.domain.model.CachedAnalysis
+import kth.nova.overloadalert.domain.usecases.AnalysisMode
 import java.time.LocalDate
 
 class AnalysisRepository(
@@ -47,13 +48,11 @@ class AnalysisRepository(
                 val runs = runningRepository.getAllRuns().first()
 
                 if (isStale) {
-                    Log.d("AnalysisRepository", "Analysis cache is stale. Recalculating...")
                     val overlapDate = today.minusDays(5)
-                    val updatedCache = analyzeRunData.updateAnalysisFrom(cached, runs, overlapDate)
+                    val updatedCache = analyzeRunData.updateAnalysisFrom(cached, runs, overlapDate, AnalysisMode.PERSISTENT)
                     analysisStorage.save(updatedCache)
                     emit(analyzeRunData.deriveUiDataFromCache(updatedCache, today))
                 } else {
-                    Log.d("AnalysisRepository", "Analysis cache is up to date.")
                     emit(analyzeRunData.deriveUiDataFromCache(cached, today))
                 }
             }
