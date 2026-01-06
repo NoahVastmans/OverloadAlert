@@ -8,14 +8,17 @@ import kth.nova.overloadalert.domain.model.UiAnalysisData
 import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kth.nova.overloadalert.domain.model.CachedAnalysis
 import java.time.LocalDate
 
 class AnalysisRepository(
@@ -24,6 +27,9 @@ class AnalysisRepository(
     private val analysisStorage: AnalysisStorage,
     coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.Default)
 ) {
+
+    private val _latestCachedAnalysis: MutableStateFlow<CachedAnalysis?> = MutableStateFlow(analysisStorage.load())
+    val latestCachedAnalysis: StateFlow<CachedAnalysis?> = _latestCachedAnalysis.asStateFlow()
 
     val latestAnalysis: StateFlow<UiAnalysisData?> = runningRepository.getAllRuns()
         .map { runs -> AnalysisKey(runs.hashCode()) } // Create a key from the current runs
