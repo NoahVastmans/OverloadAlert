@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.stateIn
 import kth.nova.overloadalert.domain.model.CachedAnalysis
 import kth.nova.overloadalert.domain.usecases.AnalysisMode
 import java.time.LocalDate
+import java.time.OffsetDateTime
 
 class AnalysisRepository(
     private val runningRepository: RunningRepository,
@@ -37,20 +39,30 @@ class AnalysisRepository(
         .distinctUntilChanged() // Only proceed if the runs have actually changed
         .flatMapLatest { key ->
             flow {
-                val cached = analysisStorage.load()
+                val cached = _latestCachedAnalysis.value
                 val today = LocalDate.now()
+
+                val isCacheEmpty = cached?.acwrByDate.isNullOrEmpty()
 
                 // Determine if the cache is stale by checking the hash OR if the day has changed.
                 val isStale = cached == null ||
+                              isCacheEmpty ||
                               key.runIdsHash != cached.lastRunHash ||
                               cached.cacheDate.isBefore(today)
 
-                val runs = runningRepository.getAllRuns().first()
+
 
                 if (isStale) {
+                    val runs = runningRepository.getAllRuns().first()
+
+                    // If the cache is effectively empty, we treat it as null to force a full re-analysis of ALL runs.
+                    // Otherwise, we do a standard incremental update.
+                    val effectiveCache = if (isCacheEmpty) null else cached
+
                     val overlapDate = today.minusDays(5)
-                    val updatedCache = analyzeRunData.updateAnalysisFrom(cached, runs, overlapDate, AnalysisMode.PERSISTENT)
+                    val updatedCache = analyzeRunData.updateAnalysisFrom(effectiveCache, runs, overlapDate, AnalysisMode.PERSISTENT)
                     analysisStorage.save(updatedCache)
+                    _latestCachedAnalysis.value = updatedCache
                     emit(analyzeRunData.deriveUiDataFromCache(updatedCache, today))
                 } else {
                     emit(analyzeRunData.deriveUiDataFromCache(cached, today))
@@ -60,6 +72,6 @@ class AnalysisRepository(
         .stateIn(
             scope = coroutineScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = null
+            initialValue = _latestCachedAnalysis.value?.let { analyzeRunData.deriveUiDataFromCache(it, LocalDate.now()) }
         )
 }

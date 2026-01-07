@@ -5,10 +5,9 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.flow.filterNotNull
-import kth.nova.overloadalert.data.RunningRepository
 import kotlinx.coroutines.flow.first
+import kth.nova.overloadalert.data.RunningRepository
 import kth.nova.overloadalert.domain.repository.AnalysisRepository
-import java.time.LocalDate
 
 class SyncWorker(
     appContext: Context,
@@ -31,13 +30,16 @@ class SyncWorker(
                 val analysis = analysisRepository.latestAnalysis.filterNotNull().first()
                 analysis.runAnalysis?.combinedRisk?.let { risk ->
                     when (risk.title) {
+                        "No Data" -> {
+                            // Do nothing. The analysis might be lagging behind the sync (due to debounce).
+                            // Suppress this notification to avoid confusing the user during first connect.
+                        }
                         "Optimal", "De-training/Recovery" -> {
                             notificationHelper.showEncouragementNotification(
                                 risk.title,
                                 risk.message
                             )
                         }
-
                         else -> {
                             // Any other title is considered a warning
                             notificationHelper.showWarningNotification(risk.title, risk.message)

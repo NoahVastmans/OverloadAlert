@@ -33,26 +33,27 @@ class AnalyzeRunData {
 
     fun updateAnalysisFrom(cached: CachedAnalysis?, runs: List<Run>, overlapDate: LocalDate, mode: AnalysisMode): CachedAnalysis {
         if (cached == null) {
-            val startDate = runs.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
+            val startDate = runs.minOfOrNull { OffsetDateTime.parse(it.startDateLocal).toLocalDate() } ?: LocalDate.now()
             return performFullAnalysis(runs, startDate, LocalDate.now())
         }
 
         val startDate = cached.acwrByDate.keys.minOrNull()?: overlapDate
         val overlapIndex = ChronoUnit.DAYS.between(startDate, overlapDate).toInt()
         if (overlapIndex < 0) {
-            val startDate = runs.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
+            val startDate = runs.minOfOrNull { OffsetDateTime.parse(it.startDateLocal).toLocalDate() } ?: LocalDate.now()
             return performFullAnalysis(runs, startDate, LocalDate.now())
         }
 
         val seriesEndDate = if (mode == AnalysisMode.SIMULATION) {
-            runs.maxOfOrNull { OffsetDateTime.parse(it.startDateLocal).toLocalDate() } ?: overlapDate
+            val date = runs.maxOfOrNull { OffsetDateTime.parse(it.startDateLocal).toLocalDate() } ?: overlapDate
+            date.plusDays(1)
         } else {
             LocalDate.now()
         }
 
         val truncatedDailyLoads = cached.dailyLoads.take(overlapIndex)
         val updatedRuns = runs.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(overlapDate.minusDays(1)) }
-        val newDailyLoads = createDailyLoadSeries(updatedRuns, overlapDate, seriesEndDate.plusDays(1))
+        val newDailyLoads = createDailyLoadSeries(updatedRuns, overlapDate, seriesEndDate)
 
         val combinedDailyLoads = truncatedDailyLoads + newDailyLoads
 
@@ -176,7 +177,7 @@ class AnalyzeRunData {
         return UiAnalysisData(runAnalysis, graphData, combinedRiskByRunID)
     }
 
-    private fun performFullAnalysis(runs: List<Run>, startDate: LocalDate, endDate: LocalDate): CachedAnalysis {
+    fun performFullAnalysis(runs: List<Run>, startDate: LocalDate, endDate: LocalDate): CachedAnalysis {
         val dailyLoads = createDailyLoadSeries(runs, startDate, endDate)
         val loadCapSeries = createRollingLoadCapSeries(dailyLoads)
         val cappedDailyLoads = dailyLoads.mapIndexed { i, load ->
