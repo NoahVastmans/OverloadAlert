@@ -59,6 +59,23 @@ import kth.nova.overloadalert.domain.plan.ProgressionRate
 import java.time.DayOfWeek
 import kotlin.math.roundToInt
 
+/**
+ * Composable function for the Preferences screen, allowing users to configure training settings.
+ *
+ * This screen provides a UI for users to:
+ * - Set the maximum number of runs per week.
+ * - Choose a progression rate for training volume (e.g., Conservative, Moderate, Aggressive).
+ * - Select preferred days for long runs.
+ * - Specify forbidden days where no runs should be scheduled.
+ * - (Premium only) Connect to Google Calendar for plan synchronization.
+ *
+ * The screen handles validation logic to ensure the selected preferences allow for a viable training plan.
+ * It warns the user if the configuration is invalid (e.g., too many runs requested for the available days).
+ * It also includes protection against unsaved changes via a discard dialog when navigating back.
+ *
+ * @param appComponent The [AppComponent] dependency injection container used to retrieve the ViewModel factory.
+ * @param onNavigateBack Callback invoked when the user initiates a back navigation or successfully saves changes.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PreferencesScreen(appComponent: AppComponent, onNavigateBack: () -> Unit) {

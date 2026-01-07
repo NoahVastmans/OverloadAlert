@@ -1,6 +1,5 @@
 package kth.nova.overloadalert.domain.usecases
 
-import android.util.Log
 import androidx.compose.ui.graphics.Color
 import com.github.mikephil.charting.data.BarEntry
 import com.github.mikephil.charting.data.Entry
@@ -16,21 +15,55 @@ import kotlin.math.min
 enum class AnalysisMode {
     PERSISTENT, SIMULATION
 }
+
+/**
+ * Domain use case responsible for analyzing running data to calculate training load metrics
+ * and assess injury risk.
+ *
+ * This class handles the calculation of:
+ * - Daily Loads
+ * - Acute Training Load (7-day rolling average/sum)
+ * - Chronic Training Load (28-day EWMA)
+ * - Acute:Chronic Workload Ratio (ACWR)
+ * - Longest Run Thresholds
+ * - Combined Injury Risk (ACWR + Single Run Risk)
+ *
+ * It supports efficient incremental updates to avoid recalculating the entire history
+ * and provides simulation capabilities for future planning.
+ */
 class AnalyzeRunData {
 
-    operator fun invoke(runs: List<Run>, referenceDate: LocalDate): UiAnalysisData {
-        if (runs.isEmpty()) return UiAnalysisData(null, null, emptyMap())
-
-        val startDate = runs.minOf { OffsetDateTime.parse(it.startDateLocal).toLocalDate() }
-        val cachedAnalysis = performFullAnalysis(runs, startDate, referenceDate)
-        return deriveUiDataFromCache(cachedAnalysis, referenceDate)
-    }
-
+    /**
+     * Performs a "what-if" analysis for a specific future date by simulating the addition of new runs.
+     *
+     * This function uses the existing cached analysis as a baseline and incrementally updates it
+     * with the provided [newRuns] in [AnalysisMode.SIMULATION] mode. This allows for fast
+     * feedback during training plan generation without affecting the persistent cache.
+     *
+     * @param cached The current valid [CachedAnalysis].
+     * @param newRuns A list of simulated runs to add to the analysis.
+     * @param targetDate The date for which the UI data should be derived.
+     * @return [UiAnalysisData] containing metrics and risk assessments for the [targetDate].
+     */
     fun getAnalysisForFutureDate(cached: CachedAnalysis, newRuns: List<Run>, targetDate: LocalDate): UiAnalysisData {
         val futureCachedAnalysis = updateAnalysisFrom(cached, newRuns, LocalDate.now(), AnalysisMode.SIMULATION)
         return deriveUiDataFromCache(futureCachedAnalysis, targetDate)
     }
 
+    /**
+     * Incrementally updates an existing analysis with new data.
+     *
+     * Instead of recalculating the entire history, this function truncates the cached series
+     * at the specified [overlapDate] and recalculates only the data points from that date forward.
+     *
+     * @param cached The previous [CachedAnalysis], or null if no cache exists.
+     * @param runs The list of runs to analyze. Ideally contains runs starting from [overlapDate],
+     *             but for [AnalysisMode.PERSISTENT] it usually contains the full list for correct historical risk mapping.
+     * @param overlapDate The date from which the analysis should be updated/recalculated.
+     * @param mode The [AnalysisMode] determining whether to compute persistent fields (like specific run risks)
+     *             or just load metrics for simulation.
+     * @return A new [CachedAnalysis] object containing the updated series and metrics.
+     */
     fun updateAnalysisFrom(cached: CachedAnalysis?, runs: List<Run>, overlapDate: LocalDate, mode: AnalysisMode): CachedAnalysis {
         if (cached == null) {
             val startDate = runs.minOfOrNull { OffsetDateTime.parse(it.startDateLocal).toLocalDate() } ?: LocalDate.now()
@@ -129,6 +162,16 @@ class AnalyzeRunData {
         )
     }
 
+    /**
+     * Derives UI-ready data for a specific date from a [CachedAnalysis] object.
+     *
+     * This function extracts the relevant metrics (Acute, Chronic, ACWR) for the [referenceDate],
+     * prepares data for charts (last 30 days), and retrieves the combined risk assessment.
+     *
+     * @param cached The source [CachedAnalysis].
+     * @param referenceDate The date for which to extract current status and recommendations (usually Today).
+     * @return [UiAnalysisData] containing the `RunAnalysis`, `GraphData`, and historical risks.
+     */
     fun deriveUiDataFromCache(cached: CachedAnalysis? , referenceDate: LocalDate): UiAnalysisData {
         if (cached == null) return UiAnalysisData(null, null)
 
@@ -177,6 +220,18 @@ class AnalyzeRunData {
         return UiAnalysisData(runAnalysis, graphData, combinedRiskByRunID)
     }
 
+    /**
+     * Performs a full analysis from scratch on the provided list of runs.
+     *
+     * This function iterates through the entire history to build the daily load series,
+     * calculate Acute and Chronic loads, and assess ACWR and Single Run risks for every run.
+     * It is computationally expensive and should be used only when no cache is available or the cache is invalid.
+     *
+     * @param runs The complete list of runs to analyze.
+     * @param startDate The start date for the analysis timeline.
+     * @param endDate The end date for the analysis timeline (usually Today).
+     * @return A fresh [CachedAnalysis] object.
+     */
     fun performFullAnalysis(runs: List<Run>, startDate: LocalDate, endDate: LocalDate): CachedAnalysis {
         val dailyLoads = createDailyLoadSeries(runs, startDate, endDate)
         val loadCapSeries = createRollingLoadCapSeries(dailyLoads)

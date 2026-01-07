@@ -13,6 +13,31 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
+/**
+ * Generates a personalized weekly running plan for the upcoming week.
+ *
+ * This class is the core of the training plan generation logic. It synthesizes user preferences,
+ * historical performance, recent training load, and physiological risk analysis to create a
+ * structured, safe, and effective training schedule for the next 7 days.
+ *
+ * The generation process involves several key steps:
+ * 1.  **Structure Determination:** It first decides whether to create a new weekly structure
+ *     (i.e., which days to run and what type of run for each day) or reuse the structure from a
+ *     previous plan. A new structure is created if there's no previous plan, user preferences have
+ *     changed, the risk phase has changed, or the user deviated significantly from the previous day's plan.
+ * 2.  **Volume Calculation:** It calculates the target total weekly running distance (volume) based on
+ *     the user's recent training history and their desired progression rate (e.g., retain, slow, fast).
+ * 3.  **Initial Load Distribution:** It distributes the target weekly volume across the planned
+ *     running days, assigning initial distances based on the run type (long, moderate, short).
+ * 4.  **Iterative Validation and Adjustment:** This is a crucial step where the plan is refined for safety.
+ *     The generator simulates the plan day by day, using `AnalyzeRunData` to predict the physiological
+ *     impact (e.g., risk of overtraining) for each run. If a planned run is deemed too risky or too easy,
+ *     its distance is adjusted to fall within a "safe range".
+ * 5.  **Rebalancing:** After adjustments, the total weekly volume might no longer match the target. The
+ *     `rebalanceVolume` function intelligently redistributes the surplus or deficit across the other
+ *     running days, respecting the safe ranges and run type hierarchy, to converge on a plan that is
+ *     both safe and meets the overall volume goal.
+ */
 class WeeklyTrainingPlanGenerator {
 
     fun generate(input: PlanInput, allRuns: List<Run>, analyzeRunData: AnalyzeRunData, cachedAnalysis: CachedAnalysis): WeeklyTrainingPlan {
@@ -133,7 +158,7 @@ class WeeklyTrainingPlanGenerator {
         val add = discrepancy > 0
         var remaining = abs(discrepancy)
 
-        val processOrder = if (add) listOf(shortDays, moderateDays, longDays)
+        if (add) listOf(shortDays, moderateDays, longDays)
         else listOf(longDays, moderateDays, shortDays)
 
         // Helper to get current, min, max
@@ -248,11 +273,10 @@ class WeeklyTrainingPlanGenerator {
             input.historicalData.typicalRunsPerWeek + 1
         )
 
-        val historicalDays =
-            if (input.historicalData.hasClearWeeklyStructure)
-                input.historicalData.typicalRunDays
-            else
-                emptySet()
+        if (input.historicalData.hasClearWeeklyStructure)
+            input.historicalData.typicalRunDays
+        else
+            emptySet()
 
         // ---- 1. LONG run ----
         val longRunDay = selectLongRunDay(availableDays, input)
@@ -297,7 +321,7 @@ class WeeklyTrainingPlanGenerator {
                 val midDay = DayOfWeek.of(if (midValue == 0) 7 else midValue)
 
                 // Pick candidate closest to mid
-                val candidate = moderateCandidates.minByOrNull { kotlin.math.abs(it.value - midDay.value) }!!
+                val candidate = moderateCandidates.minByOrNull { abs(it.value - midDay.value) }!!
                 selectedModerates.add(candidate)
                 moderateCandidates.remove(candidate)
                 assignedModerate.add(candidate)
@@ -338,11 +362,11 @@ class WeeklyTrainingPlanGenerator {
                 val candidate = easyCandidates
                     .filter { cand ->
                         assignedShort.none { a ->
-                            val diff = kotlin.math.abs(a.value - cand.value)
+                            val diff = abs(a.value - cand.value)
                             diff == 1 || diff == 6
                         }
                     }
-                    .minByOrNull { kotlin.math.abs(it.value - midDay.value) }
+                    .minByOrNull { abs(it.value - midDay.value) }
                     ?: easyCandidates.first() // fallback if no candidate is non-adjacent
 
                 selectedEasy.add(candidate)
@@ -442,12 +466,12 @@ class WeeklyTrainingPlanGenerator {
     }
 
     private fun DayOfWeek.isAdjacentTo(other: DayOfWeek): Boolean {
-        val diff = kotlin.math.abs(this.value - other.value)
+        val diff = abs(this.value - other.value)
         return diff == 1 || diff == 6 // handles wrap-around (Sunday ↔ Monday)
     }
 
     private fun distanceInDays(a: DayOfWeek, b: DayOfWeek): Int {
-        val diff = kotlin.math.abs(a.value - b.value)
+        val diff = abs(a.value - b.value)
         return min(diff, 7 - diff)
     }
 

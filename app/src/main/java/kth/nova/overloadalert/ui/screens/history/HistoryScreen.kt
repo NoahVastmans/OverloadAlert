@@ -48,6 +48,23 @@ import kth.nova.overloadalert.domain.model.CombinedRisk
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 
+/**
+ * Composable function that renders the screen displaying the history of analyzed runs.
+ *
+ * This screen observes the UI state from the [HistoryViewModel] and displays a list of past runs
+ * along with their calculated risk assessments. It handles different UI states including loading,
+ * error messages, and empty history scenarios.
+ *
+ * Features:
+ * - Displays a "Run History" title with an information button that explains the screen's purpose.
+ * - Shows a [CircularProgressIndicator] while data is loading.
+ * - Displays error messages if data fetching fails.
+ * - Renders a [LazyColumn] of [RunHistoryItem]s when data is available.
+ * - Provides an info dialog explaining the screen context.
+ * - Supports clicking on individual risk tags to show a detailed risk assessment dialog.
+ *
+ * @param viewModel The [HistoryViewModel] that provides the [HistoryUiState] and manages the business logic for this screen.
+ */
 @Composable
 fun HistoryScreen(viewModel: HistoryViewModel) {
     val uiState by viewModel.uiState.collectAsState()

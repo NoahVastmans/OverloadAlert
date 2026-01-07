@@ -28,6 +28,18 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import kth.nova.overloadalert.R
 
+/**
+ * A Composable function that renders the Login screen for the application.
+ *
+ * This screen prompts the user to connect their Strava account to the application. It displays
+ * a title, an explanatory text regarding why the connection is necessary (training load analysis,
+ * injury risk, etc.), and a clickable "Connect with Strava" button.
+ *
+ * When the button is clicked, it launches an [Intent] to open the Strava authentication URL
+ * provided by the [uiState] of the [viewModel].
+ *
+ * @param viewModel The [AuthViewModel] that manages the authentication state and provides the authentication URL.
+ */
 @Composable
 fun LoginScreen(viewModel: AuthViewModel) {
     val uiState by viewModel.uiState.collectAsState()

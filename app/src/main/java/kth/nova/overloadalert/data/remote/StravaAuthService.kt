@@ -4,6 +4,14 @@ import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.POST
 
+/**
+ * Retrofit service interface for handling Strava OAuth2 authentication.
+ *
+ * This interface defines the endpoints required to obtain and refresh access tokens
+ * from the Strava API. It is used to authenticate the user and maintain a valid session.
+ *
+ * @see [Strava Authentication Documentation](https://developers.strava.com/docs/authentication/)
+ */
 interface StravaAuthService {
 
     @FormUrlEncoded

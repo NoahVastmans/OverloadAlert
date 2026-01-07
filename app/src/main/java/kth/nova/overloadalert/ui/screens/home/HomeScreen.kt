@@ -50,6 +50,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kth.nova.overloadalert.R
 
+/**
+ * Composable function for the main Home Screen of the application.
+ *
+ * This screen acts as the primary dashboard for the user, displaying the current overload risk analysis
+ * and running recommendations based on synced data.
+ *
+ * Key features:
+ * - Displays a top app bar with the app title, last sync time, settings navigation, data refresh, and info dialog.
+ * - Manages UI state via [HomeViewModel], observing loading states, error messages, and data availability.
+ * - Shows a [RiskAnalysisCard] detailing the current physical stress level and guidance.
+ * - Shows a [RecommendationCard] with specific running limits for the day/week.
+ * - Handles sync errors by displaying a Snackbar.
+ * - Includes a "Powered by Strava" attribution footer.
+ *
+ * @param viewModel The [HomeViewModel] that provides the UI state and handles business logic (e.g., refreshing data).
+ * @param onNavigateToPreferences A callback function invoked when the user clicks the settings icon to navigate to the preferences screen.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(viewModel: HomeViewModel, onNavigateToPreferences: () -> Unit) {

@@ -7,14 +7,26 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.Route
 
+/**
+ * An OkHttp [Authenticator] implementation responsible for handling automatic Google API token refreshing.
+ *
+ * This authenticator intercepts 401 Unauthorized responses from Google API requests. When triggered,
+ * it attempts to fetch a fresh access token using the [GoogleAuthRepository] in a blocking manner
+ * (via [runBlocking]), saves the new token to the [GoogleTokenManager], and retries the original request
+ * with the new "Authorization" header.
+ *
+ * If the token refresh fails (returns null), the authenticator gives up and returns null, effectively
+ * letting the original 401 response propagate to the caller.
+ *
+ * @property googleAuthRepository The repository used to fetch new access tokens from the remote Google API.
+ * @property googleTokenManager The manager used to persist the newly acquired access token.
+ */
 class GoogleTokenAuthenticator(
     private val googleAuthRepository: GoogleAuthRepository,
     private val googleTokenManager: GoogleTokenManager
 ) : Authenticator {
 
     override fun authenticate(route: Route?, response: Response): Request? {
-        // We need to run a suspending function from a synchronous one.
-        // runBlocking is generally discouraged, but it is the standard way to do this in an Authenticator.
         val newAccessToken = runBlocking {
             googleAuthRepository.getNewAccessToken()
         }

@@ -5,14 +5,32 @@ import kth.nova.overloadalert.data.local.RunDao
 import kth.nova.overloadalert.data.remote.StravaApiService
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kth.nova.overloadalert.data.remote.StravaTokenManager
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
+/**
+ * Repository responsible for managing running activity data.
+ *
+ * This class acts as a mediator between local storage (database via [RunDao]) and remote data sources
+ * (Strava API via [StravaApiService]). It handles data synchronization logic, ensuring that the local
+ * database mirrors the relevant running activities from the remote source.
+ *
+ * Key responsibilities:
+ * - Providing access to locally stored runs as a reactive stream.
+ * - Synchronizing local data with remote data, which involves fetching new activities, identifying
+ *   discrepancies (missing or outdated entries), and performing necessary insertions or deletions.
+ * - Managing sync timestamps via [kth.nova.overloadalert.data.remote.StravaTokenManager].
+ *
+ * @property runDao The Data Access Object for local database operations on runs.
+ * @property stravaApiService The service interface for communicating with the Strava API.
+ * @property kth.nova.overloadalert.data.remote.StravaTokenManager A utility for managing authentication tokens and sync metadata.
+ */
 class RunningRepository(
     private val runDao: RunDao,
     private val stravaApiService: StravaApiService,
-    private val tokenManager: TokenManager
+    private val stravaTokenManager: StravaTokenManager
 ) {
 
     fun getAllRuns(): Flow<List<Run>> {
@@ -64,7 +82,7 @@ class RunningRepository(
                 dataChanged = true
             }
             
-            tokenManager.saveLastSyncTimestamp(System.currentTimeMillis())
+            stravaTokenManager.saveLastSyncTimestamp(System.currentTimeMillis())
             
             Result.success(dataChanged)
         } catch (e: Exception) {

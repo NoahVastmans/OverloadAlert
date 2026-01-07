@@ -5,9 +5,19 @@ import com.squareup.moshi.Moshi
 import kth.nova.overloadalert.domain.plan.RiskOverride
 import kth.nova.overloadalert.domain.plan.WeeklyTrainingPlan
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
+/**
+ * A local storage repository responsible for persisting training plans, risk overrides,
+ * and calendar configurations using Android's [SharedPreferences].
+ *
+ * This class handles the serialization and deserialization of objects (specifically
+ * [WeeklyTrainingPlan] and [RiskOverride]) to JSON using Moshi, ensuring data persists
+ * across app restarts. It also exposes a reactive flow for monitoring changes to risk overrides.
+ *
+ * @property context The Android context used to access SharedPreferences.
+ * @property moshi The Moshi instance used for JSON serialization/deserialization.
+ */
 class PlanStorage(context: Context, moshi: Moshi) {
 
     private val sharedPreferences = context.getSharedPreferences("plan_storage", Context.MODE_PRIVATE)
@@ -15,7 +25,6 @@ class PlanStorage(context: Context, moshi: Moshi) {
     private val overrideAdapter = moshi.adapter(RiskOverride::class.java)
 
     private val _riskOverrideFlow = MutableStateFlow(loadRiskOverride())
-    val riskOverrideFlow = _riskOverrideFlow.asStateFlow()
 
     fun savePlan(plan: WeeklyTrainingPlan) {
         sharedPreferences.edit().putString(KEY_PLAN, planAdapter.toJson(plan)).apply()

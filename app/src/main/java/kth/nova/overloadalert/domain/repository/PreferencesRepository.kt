@@ -15,6 +15,20 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import java.time.DayOfWeek
 
+/**
+ * Repository responsible for managing and persisting user preferences for the training plan.
+ *
+ * This class handles reading from and writing to the Android [SharedPreferences]. It provides
+ * a reactive [StateFlow] of [UserPreferences] to allow observers to react to changes in settings
+ * (e.g., maximum runs per week, forbidden days, premium status).
+ *
+ * Additionally, it combines user preferences with the Google Token Manager state to determine
+ * the effective Google connection status (only considered connected if the user is also Premium).
+ *
+ * @property context The Android application context used to access SharedPreferences.
+ * @property googleTokenManager Manager for handling Google authentication tokens.
+ * @property coroutineScope The scope used for collecting flows and sharing state, defaults to [Dispatchers.Default].
+ */
 class PreferencesRepository(
     context: Context,
     googleTokenManager: GoogleTokenManager,

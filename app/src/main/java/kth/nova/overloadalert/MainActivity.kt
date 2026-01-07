@@ -28,6 +28,19 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import java.util.concurrent.TimeUnit
 
+/**
+ * The entry point of the OverloadAlert application.
+ *
+ * This activity serves as the root container for the UI, managing the navigation between the
+ * login screen and the main application screen based on the user's authentication state.
+ *
+ * Key responsibilities include:
+ * - **Dependency Injection:** initializes the [AuthViewModel] using the application's Dagger component.
+ * - **UI Composition:** Sets up the Jetpack Compose content, switching between [LoginScreen] and [MainScreen].
+ * - **Deep Link Handling:** Processes OAuth callback intents (via `handleIntent`) to exchange authorization codes for tokens.
+ * - **Background Work:** Schedules periodic background synchronization using [WorkManager] via [scheduleBackgroundSync] upon successful authentication.
+ * - **Permissions:** Requests notification permissions on Android 13+ (Tiramisu) via [askForNotificationPermission].
+ */
 class MainActivity : ComponentActivity() {
 
     private val appComponent by lazy { (application as OverloadAlertApplication).appComponent }

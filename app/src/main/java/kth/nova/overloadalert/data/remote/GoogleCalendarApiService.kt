@@ -8,6 +8,17 @@ import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 
+/**
+ * Retrofit service interface for interacting with the Google Calendar API.
+ *
+ * This service provides methods to manage calendars (list, create) and calendar events
+ * (create, retrieve, update, delete). It handles network requests to the underlying
+ * Google Calendar REST endpoints.
+ *
+ * All functions are suspending functions, designed to be called from a coroutine scope.
+ *
+ * @see <a href="https://developers.google.com/calendar/api/v3/reference">Google Calendar API Reference</a>
+ */
 interface GoogleCalendarApiService {
 
     // --- Calendar Methods ---

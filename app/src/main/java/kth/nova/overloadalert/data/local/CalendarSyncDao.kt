@@ -5,6 +5,13 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 
+/**
+ * Data Access Object (DAO) for managing calendar synchronization status.
+ *
+ * This interface defines the database operations for the `calendar_sync` table,
+ * allowing the application to track when specific dates were last synchronized
+ * with an external calendar provider to prevent redundant network calls or processing.
+ */
 @Dao
 interface CalendarSyncDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)

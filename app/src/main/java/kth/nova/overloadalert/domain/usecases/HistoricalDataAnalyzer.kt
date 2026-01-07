@@ -8,6 +8,22 @@ import java.time.temporal.ChronoUnit
 import kotlin.math.max
 import kotlin.math.roundToInt
 
+/**
+ * Analyzes a list of historical running activities to extract patterns and structural habits.
+ *
+ * This use case processes raw [Run] data to determine a runner's typical weekly schedule,
+ * including preferred running days, frequency, and the specific day usually dedicated to long runs.
+ * It employs heuristics to decide if the user follows a structured training plan or runs irregularly.
+ *
+ * The analysis requires a minimum amount of data (currently 8 runs, approx. 2 weeks) to produce meaningful results.
+ * If insufficient data is provided, default [HistoricalData] is returned.
+ *
+ * The analysis includes:
+ * - **Typical Run Days:** Days where a run occurs in at least 50% of the recorded weeks.
+ * - **Weekly Frequency:** An estimate of runs per week, derived from both average frequency and specific day consistency.
+ * - **Structure Detection:** Determines if >75% of runs happen on "typical" days.
+ * - **Long Run Day:** Identifies the day of the week historically associated with the longest distance.
+ */
 class HistoricalDataAnalyzer {
 
     operator fun invoke(runs: List<Run>): HistoricalData {

@@ -31,6 +31,23 @@ import kth.nova.overloadalert.R
 import kth.nova.overloadalert.di.AppComponent
 import kotlin.math.roundToInt
 
+/**
+ * Composable function that renders the Graphs screen, displaying visual analysis of the user's training load.
+ *
+ * This screen contains two main charts:
+ * 1. **Top Chart:** A combined chart showing daily running distance (bars) against a "Longest Run Threshold" (lines).
+ *    It uses background color zones (safe, moderate, high risk) to indicate the safety of the workload relative to the threshold.
+ * 2. **Bottom Chart:** A line chart displaying the Acute vs. Chronic Workload Ratio (ACWR).
+ *    It plots the acute load against chronic load benchmarks, visualizing zones for de-training, optimal training, and overtraining risk.
+ *
+ * The screen also handles:
+ * - Fetching graph data from the [GraphsViewModel].
+ * - Handling loading states.
+ * - Displaying informational dialogs for general help and specific chart details.
+ * - Integrating legacy View-based MPAndroidChart views into the Compose UI via [AndroidView].
+ *
+ * @param appComponent The dependency injection component used to create the [GraphsViewModel].
+ */
 @Composable
 fun GraphsScreen(appComponent: AppComponent) {
     val viewModel: GraphsViewModel = viewModel(factory = appComponent.graphsViewModelFactory)
@@ -111,7 +128,7 @@ fun GraphsScreen(appComponent: AppComponent) {
                                     val mv = MyMarkerView(context, R.layout.custom_marker_view)
                                     mv.chartView = this
                                     marker = mv
-                                    setHighlightPerTapEnabled(true)
+                                    isHighlightPerTapEnabled = true
                                     setDrawGridBackground(false)
                                     setDrawBarShadow(false)
                                     description.isEnabled = false
@@ -199,7 +216,7 @@ fun GraphsScreen(appComponent: AppComponent) {
                                     val acwrMarker = MyMarkerView(context, R.layout.custom_marker_view, graphData.chronicLoadLine)
                                     acwrMarker.chartView = this
                                     marker = acwrMarker
-                                    setHighlightPerTapEnabled(true)
+                                    isHighlightPerTapEnabled = true
                                     setDrawGridBackground(false)
                                     description.isEnabled = false
                                     setBackgroundColor(Color.TRANSPARENT)

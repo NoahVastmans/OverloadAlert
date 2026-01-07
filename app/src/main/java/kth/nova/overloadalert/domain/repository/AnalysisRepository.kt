@@ -24,6 +24,28 @@ import kth.nova.overloadalert.domain.usecases.AnalysisMode
 import java.time.LocalDate
 import java.time.OffsetDateTime
 
+/**
+ * Repository responsible for managing and providing access to run analysis data.
+ *
+ * This repository orchestrates the retrieval of raw run data, triggers the analysis logic
+ * (calculating metrics like ACWR), handles caching of analysis results to persistent storage,
+ * and exposes a reactive stream of the latest UI-ready analysis data.
+ *
+ * Key features:
+ * - **Reactive Updates:** Exposes `latestAnalysis` as a `StateFlow` that automatically updates whenever the underlying run data changes.
+ * - **Caching Strategy:** Maintains a `CachedAnalysis` object in local storage (`AnalysisStorage`). It checks for staleness based on run data hash codes and the current date.
+ * - **Incremental Updates:** Uses `AnalyzeRunData` to perform incremental analysis updates when possible, rather than re-calculating everything from scratch, unless the cache is empty or invalid.
+ * - **Staleness Logic:** Refreshes the analysis if:
+ *      - No cache exists.
+ *      - The cache is empty.
+ *      - The hash of the current run data differs from the cached hash (indicating data changes).
+ *      - The current date is later than the cache date (indicating a new day has started).
+ *
+ * @property runningRepository Source of truth for raw run data.
+ * @property analyzeRunData Use case containing the core logic for calculating and updating analysis metrics.
+ * @property analysisStorage Local storage mechanism for persisting the analysis cache.
+ * @property coroutineScope The scope in which the analysis flow collection and computation operate.
+ */
 class AnalysisRepository(
     private val runningRepository: RunningRepository,
     private val analyzeRunData: AnalyzeRunData,

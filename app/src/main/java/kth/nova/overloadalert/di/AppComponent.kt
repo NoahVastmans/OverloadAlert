@@ -5,12 +5,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.room.Room
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import kth.nova.overloadalert.data.AuthRepository
+import kth.nova.overloadalert.data.remote.StravaAuthRepository
 import kth.nova.overloadalert.data.CalendarSyncService
 import kth.nova.overloadalert.data.LocalDateAdapter
 import kth.nova.overloadalert.data.CombinedRiskAdapter
 import kth.nova.overloadalert.data.RunningRepository
-import kth.nova.overloadalert.data.TokenManager
+import kth.nova.overloadalert.data.remote.StravaTokenManager
 import kth.nova.overloadalert.data.local.AnalysisStorage
 import kth.nova.overloadalert.data.local.AppDatabase
 import kth.nova.overloadalert.data.local.PlanStorage
@@ -21,7 +21,7 @@ import kth.nova.overloadalert.data.remote.GoogleTokenAuthenticator
 import kth.nova.overloadalert.data.remote.GoogleTokenManager
 import kth.nova.overloadalert.data.remote.StravaApiService
 import kth.nova.overloadalert.data.remote.StravaAuthService
-import kth.nova.overloadalert.data.remote.TokenAuthenticator
+import kth.nova.overloadalert.data.remote.StravaTokenAuthenticator
 import kth.nova.overloadalert.domain.plan.WeeklyTrainingPlanGenerator
 import kth.nova.overloadalert.domain.repository.AnalysisRepository
 import kth.nova.overloadalert.domain.repository.PlanRepository
@@ -42,6 +42,22 @@ import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
+/**
+ * A manual dependency injection component responsible for creating, holding, and managing
+ * the singletons and scoped dependencies for the entire application.
+ *
+ * This component initializes core services such as:
+ * - Network clients (OkHttp, Retrofit) for Strava and Google APIs.
+ * - Local storage (Room database, SharedPreferences wrappers).
+ * - Repositories for data access.
+ * - Use cases and domain logic generators.
+ * - ViewModel factories for UI consumption.
+ *
+ * It acts as a service locator, allowing the rest of the application to retrieve
+ * configured dependencies lazily.
+ *
+ * @property context The application context used for initializing system services and database/file storage.
+ */
 class AppComponent(context: Context) {
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -52,7 +68,7 @@ class AppComponent(context: Context) {
         .add(KotlinJsonAdapterFactory())
         .build()
 
-    val tokenManager by lazy { TokenManager(context) }
+    val stravaTokenManager by lazy { StravaTokenManager(context) }
     val googleTokenManager by lazy { GoogleTokenManager(context) }
 
     private val unauthenticatedRetrofit = Retrofit.Builder()
@@ -64,13 +80,13 @@ class AppComponent(context: Context) {
         unauthenticatedRetrofit.create(StravaAuthService::class.java)
     }
 
-    private val authenticator by lazy { TokenAuthenticator(tokenManager, stravaAuthService) }
+    private val authenticator by lazy { StravaTokenAuthenticator(stravaTokenManager, stravaAuthService) }
 
     private val authenticatedOkHttpClient by lazy {
         OkHttpClient.Builder()
             .authenticator(authenticator)
             .addInterceptor { chain ->
-                val token = tokenManager.getAccessToken()
+                val token = stravaTokenManager.getAccessToken()
                 val request = if (token != null) {
                     chain.request().newBuilder()
                         .addHeader("Authorization", "Bearer $token")
@@ -136,8 +152,8 @@ class AppComponent(context: Context) {
     val planStorage: PlanStorage by lazy { PlanStorage(context, moshi) }
     val analysisStorage by lazy { AnalysisStorage(context, moshi) }
 
-    val authRepository: AuthRepository by lazy { AuthRepository(stravaAuthService, tokenManager) }
-    val runningRepository: RunningRepository by lazy { RunningRepository(appDatabase.runDao(), stravaApiService, tokenManager) }
+    val stravaAuthRepository: StravaAuthRepository by lazy { StravaAuthRepository(stravaAuthService, stravaTokenManager) }
+    val runningRepository: RunningRepository by lazy { RunningRepository(appDatabase.runDao(), stravaApiService, stravaTokenManager) }
     val googleCalendarRepository: GoogleCalendarRepository by lazy { GoogleCalendarRepository(googleCalendarApiService) }
     val preferencesRepository: PreferencesRepository by lazy { PreferencesRepository(context, googleTokenManager, appScope) }
 
@@ -163,8 +179,8 @@ class AppComponent(context: Context) {
         )
     }
 
-    val authViewModelFactory: ViewModelProvider.Factory by lazy { AuthViewModel.provideFactory(authRepository, tokenManager) }
-    val homeViewModelFactory: ViewModelProvider.Factory by lazy { HomeViewModel.provideFactory(analysisRepository, runningRepository, tokenManager) }
+    val authViewModelFactory: ViewModelProvider.Factory by lazy { AuthViewModel.provideFactory(stravaAuthRepository, stravaTokenManager) }
+    val homeViewModelFactory: ViewModelProvider.Factory by lazy { HomeViewModel.provideFactory(analysisRepository, runningRepository, stravaTokenManager) }
     val historyViewModelFactory: ViewModelProvider.Factory by lazy { 
         HistoryViewModel.provideFactory(runningRepository, analysisRepository) 
     }

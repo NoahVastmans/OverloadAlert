@@ -7,6 +7,18 @@ import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+/**
+ * Manages the storage and retrieval of Google OAuth tokens securely using Android's [EncryptedSharedPreferences].
+ *
+ * This class handles the lifecycle of access tokens, refresh tokens, and their expiration times.
+ * It uses the [MasterKey] system to encrypt data stored in SharedPreferences, ensuring that sensitive
+ * authentication data is protected against unauthorized access.
+ *
+ * It also exposes an observable [isConnected] flow to allow UI components to react to changes
+ * in the authentication state (i.e., whether a valid access token is currently held).
+ *
+ * @property context The Android [Context] required to initialize the EncryptedSharedPreferences and MasterKey.
+ */
 class GoogleTokenManager(context: Context) {
 
     private val masterKey = MasterKey.Builder(context)

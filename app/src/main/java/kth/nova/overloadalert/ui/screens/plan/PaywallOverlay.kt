@@ -21,6 +21,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
+/**
+ * A composable overlay that blocks user interaction with the underlying content to prompt a subscription.
+ *
+ * This overlay renders a semi-transparent black background over the entire screen area, centering a lock icon,
+ * promotional text, and a call-to-action button. It is intended to be used when specific features (like an
+ * advanced training plan) are restricted to premium users.
+ *
+ * @param onUnlock The callback function to be invoked when the "Unlock Premium" button is clicked.
+ *                 This typically triggers the navigation to a subscription flow or payment screen.
+ */
 @Composable
 fun PaywallOverlay(onUnlock: () -> Unit) {
     Box(

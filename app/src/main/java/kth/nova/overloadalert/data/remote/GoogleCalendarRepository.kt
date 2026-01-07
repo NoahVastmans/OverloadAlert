@@ -6,6 +6,19 @@ import kotlinx.coroutines.withContext
 import retrofit2.Response
 import java.util.TimeZone
 
+/**
+ * Repository responsible for interacting with the Google Calendar API.
+ *
+ * This class handles operations related to fetching, creating, and managing calendars and
+ * their associated events on a remote Google Calendar service. It acts as an abstraction
+ * layer over the [GoogleCalendarApiService], executing network requests on the IO dispatcher.
+ *
+ * Key functionalities include:
+ * - Retrieving or creating a specific calendar by name (summary).
+ * - Creating, updating (patching), retrieving, and deleting calendar events.
+ *
+ * @property googleCalendarApiService The Retrofit service interface for Google Calendar API calls.
+ */
 class GoogleCalendarRepository(
     private val googleCalendarApiService: GoogleCalendarApiService
 ) {

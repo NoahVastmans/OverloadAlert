@@ -11,6 +11,15 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 
+/**
+ * ViewModel responsible for managing the state of the graphs screen.
+ *
+ * This ViewModel observes the latest analysis data from the [AnalysisRepository] and updates the UI state accordingly.
+ * It serves as a bridge between the domain layer (repository) and the UI layer, exposing a reactive stream of [GraphsUiState].
+ *
+ * @property uiState A [StateFlow] emitting the current state of the graphs UI, including loading status and graph data.
+ * @param analysisRepository The repository acting as the single source of truth for analysis data.
+ */
 class GraphsViewModel(
     analysisRepository: AnalysisRepository // The new single source of truth
 ) : ViewModel() {

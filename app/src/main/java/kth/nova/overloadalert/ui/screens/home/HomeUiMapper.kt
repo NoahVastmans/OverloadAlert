@@ -3,6 +3,18 @@ package kth.nova.overloadalert.ui.screens.home
 import kth.nova.overloadalert.domain.model.CombinedRisk
 import kth.nova.overloadalert.domain.model.RunAnalysis
 
+/**
+ * Responsible for mapping domain models into UI-specific states for the Home screen.
+ *
+ * This mapper transforms business logic objects (like [CombinedRisk] and [RunAnalysis])
+ * into display-ready data classes ([RiskCardUi], [RecommendationCardUi]) containing formatted strings,
+ * descriptions, and actionable guidance tailored for the user interface.
+ *
+ * It encapsulates logic for:
+ * - Parsing and cleaning risk titles.
+ * - Generating user-friendly descriptions and guidance based on risk levels (Low, Optimal, Elevated, High).
+ * - Formatting numerical distance data into readable string representations.
+ */
 class HomeUiMapper {
 
     fun mapRiskCard(combinedRisk: CombinedRisk): RiskCardUi {

@@ -18,6 +18,21 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+/**
+ * Repository responsible for handling Google Authentication and managing OAuth2 tokens.
+ *
+ * This class encapsulates interactions with the Google Sign-In SDK and `GoogleAuthUtil` to perform the following operations:
+ * - Initiating the sign-in flow.
+ * - Processing sign-in results.
+ * - Retrieving and refreshing OAuth2 access tokens.
+ * - Managing user sessions (sign-out).
+ * - Storing tokens securely via the [GoogleTokenManager].
+ *
+ * Specifically configured to request scopes for the Google Calendar API (`calendar` and `calendar.events`).
+ *
+ * @property context The application context used for SDK initialization and resource access.
+ * @property googleTokenManager A manager for persisting the retrieved access tokens.
+ */
 class GoogleAuthRepository(
     private val context: Context,
     private val googleTokenManager: GoogleTokenManager

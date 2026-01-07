@@ -5,6 +5,17 @@ import androidx.work.Configuration
 import kth.nova.overloadalert.di.AppComponent
 import kth.nova.overloadalert.worker.MyWorkerFactory
 
+/**
+ * The main Application class for the Overload Alert app.
+ *
+ * This class serves as the entry point for application-wide initialization and state management.
+ * It is responsible for:
+ * - Initializing the Dependency Injection container ([AppComponent]).
+ * - Configuring the [androidx.work.WorkManager] with a custom [MyWorkerFactory] to support
+ *   dependency injection in background workers.
+ *
+ * Implements [Configuration.Provider] to supply the custom WorkManager configuration on demand.
+ */
 class OverloadAlertApplication : Application(), Configuration.Provider {
 
     lateinit var appComponent: AppComponent

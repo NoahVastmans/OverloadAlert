@@ -7,6 +7,12 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * Data Access Object (DAO) for accessing and managing [Run] entities in the local database.
+ *
+ * This interface provides methods to insert, query, and delete run data using Room.
+ * It supports standard CRUD operations and reactive data streams via [Flow].
+ */
 @Dao
 interface RunDao {
 

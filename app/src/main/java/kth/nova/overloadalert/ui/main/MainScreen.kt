@@ -25,6 +25,18 @@ import kth.nova.overloadalert.ui.screens.home.HomeViewModel
 import kth.nova.overloadalert.ui.screens.plan.PlanScreen
 import kth.nova.overloadalert.ui.screens.preferences.PreferencesScreen
 
+/**
+ * The main composable screen of the application that serves as the root container for the UI.
+ *
+ * This component sets up the [Scaffold] structure, including the bottom navigation bar and the
+ * central navigation host. It manages the app's top-level navigation logic, allowing switching between
+ * the primary screens: Home, History, Graphs, and Plan. It also handles navigation to the Preferences screen.
+ *
+ * The bottom navigation bar is dynamically shown only for top-level destinations found in [navItems].
+ *
+ * @param appComponent The dependency injection component used to provide ViewModels and dependencies
+ * to the child screens.
+ */
 @Composable
 fun MainScreen(appComponent: AppComponent) {
     val navController = rememberNavController()

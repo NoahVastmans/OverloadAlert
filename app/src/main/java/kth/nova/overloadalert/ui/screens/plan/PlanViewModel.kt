@@ -15,6 +15,17 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/**
+ * ViewModel responsible for managing the UI state of the training plan screen.
+ *
+ * This ViewModel observes changes from the [PlanRepository] to update the current training plan
+ * and monitors the [PreferencesRepository] to track Google account connection status. It exposes a
+ * [StateFlow] of [PlanUiState] to the UI and provides methods to trigger calendar synchronization
+ * and unlock premium features.
+ *
+ * @property planRepository The repository used to fetch and sync training plan data.
+ * @property preferencesRepository The repository used to observe and update user preferences.
+ */
 class PlanViewModel(
     private val planRepository: PlanRepository,
     private val preferencesRepository: PreferencesRepository

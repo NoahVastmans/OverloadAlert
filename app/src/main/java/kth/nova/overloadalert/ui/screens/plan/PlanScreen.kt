@@ -54,6 +54,18 @@ import kth.nova.overloadalert.domain.plan.RiskPhase
 import kth.nova.overloadalert.domain.plan.RunType
 import java.time.LocalDate
 
+/**
+ * Displays the weekly training plan screen.
+ *
+ * This screen is responsible for rendering the calculated training plan based on the user's
+ * history and preferences. It handles:
+ * - Displaying the plan status (Loading, Active, or Empty).
+ * - Listing daily activities with visual cues for run types.
+ * - Managing Premium feature access (blurring content, showing paywall).
+ * - Providing actions for Calendar Sync and viewing plan info.
+ *
+ * @param appComponent The [AppComponent] used to provide the [PlanViewModel].
+ */
 @Composable
 fun PlanScreen(appComponent: AppComponent) {
     val viewModel: PlanViewModel = viewModel(factory = appComponent.planViewModelFactory)

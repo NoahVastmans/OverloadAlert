@@ -1,4 +1,4 @@
-package kth.nova.overloadalert.data
+package kth.nova.overloadalert.data.remote
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -7,7 +7,19 @@ import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class TokenManager(context: Context) {
+/**
+ * Manages the storage and retrieval of Strava authentication tokens and synchronization state.
+ *
+ * This class uses [androidx.security.crypto.EncryptedSharedPreferences] to securely persist sensitive data such as the
+ * OAuth access token, refresh token, and token expiration time. It ensures that credentials
+ * remain encrypted at rest.
+ *
+ * Additionally, it tracks the last successful synchronization timestamp using a reactive
+ * [kotlinx.coroutines.flow.MutableStateFlow], allowing UI components or observers to react to changes in sync status.
+ *
+ * @property context The application context used to initialize the encrypted shared preferences and master key.
+ */
+class StravaTokenManager(context: Context) {
 
     private val masterKey = MasterKey.Builder(context)
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -22,7 +34,8 @@ class TokenManager(context: Context) {
     )
 
     // --- Reactive Last Sync Timestamp ---
-    private val _lastSyncTimestamp = MutableStateFlow(sharedPreferences.getLong("last_sync_timestamp", 0L))
+    private val _lastSyncTimestamp =
+        MutableStateFlow(sharedPreferences.getLong("last_sync_timestamp", 0L))
     val lastSyncTimestamp = _lastSyncTimestamp.asStateFlow()
 
     fun saveLastSyncTimestamp(timestamp: Long) {

@@ -28,6 +28,29 @@ import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.temporal.ChronoUnit
 
+/**
+ * Repository responsible for managing the lifecycle, generation, and storage of weekly training plans.
+ *
+ * This class orchestrates the interaction between various data sources and logic components to ensure
+ * the user always has an up-to-date training plan. Its primary responsibilities include:
+ *
+ * 1.  **Plan Generation:** Triggers the generation of new [WeeklyTrainingPlan]s based on user preferences,
+ *     historical run data, and calculated risk metrics.
+ * 2.  **Reactive Updates:** Exposes a [latestPlan] StateFlow that automatically regenerates the plan
+ *     whenever significant changes occur (e.g., new run data, changed preferences, or a new week).
+ * 3.  **Risk Management:** Applies progression logic and risk overrides (e.g., DELOAD, REBUILDING phases)
+ *     by adjusting volume multipliers based on the latest [RunAnalysis] (ACWR and single-run risk).
+ * 4.  **Persistence:** Delegates loading and saving of plans and risk overrides to [PlanStorage].
+ * 5.  **External Sync:** Initiates synchronization with the system calendar via [CalendarSyncService]
+ *     whenever a new plan is generated.
+ *
+ * @property analysisRepository Provides access to the latest run analysis metrics.
+ * @property preferencesRepository Provides access to user settings (e.g., preferred training days, progression rate).
+ * @property planStorage Handles local storage of the generated plan and risk override states.
+ * @property runningRepository Provides access to raw run data.
+ * @property historicalDataAnalyzer Analyzes historical runs to determine training patterns.
+ * @property planGenerator Core logic component that creates the schedule of workouts.
+ */
 class PlanRepository(
     private val analysisRepository: AnalysisRepository,
     private val preferencesRepository: PreferencesRepository,

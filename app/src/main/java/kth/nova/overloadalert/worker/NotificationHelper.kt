@@ -9,6 +9,16 @@ import androidx.core.app.NotificationCompat
 import kth.nova.overloadalert.MainActivity
 import kth.nova.overloadalert.R
 
+/**
+ * Helper class for managing and displaying notifications related to overload alerts.
+ *
+ * This class handles the creation of the notification channel and provides methods
+ * to trigger specific types of notifications, such as warnings for high training loads
+ * or encouragement messages. It also handles the intent creation to navigate back to
+ * the [MainActivity] when a notification is tapped.
+ *
+ * @property context The application context used to access system services and resources.
+ */
 class NotificationHelper(private val context: Context) {
 
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

@@ -9,6 +9,20 @@ import kotlinx.coroutines.flow.first
 import kth.nova.overloadalert.data.RunningRepository
 import kth.nova.overloadalert.domain.repository.AnalysisRepository
 
+/**
+ * A [CoroutineWorker] responsible for executing background synchronization of run data.
+ *
+ * This worker performs the following tasks:
+ * 1. Initializes the notification channel.
+ * 2. Triggers a synchronization of run data via the [RunningRepository].
+ * 3. Observes the latest analysis data from the [AnalysisRepository] if the synchronization resulted in data changes.
+ * 4. Dispatches appropriate notifications based on the calculated risk level (e.g., encouragement for "Optimal" states, warnings for high overload risks).
+ *
+ * The worker suppresses notifications if the analysis indicates "No Data" to prevent confusion during initial data loads.
+ *
+ * @property runningRepository The repository used to sync run data from external sources.
+ * @property analysisRepository The repository used to fetch the latest risk analysis based on the synced data.
+ */
 class SyncWorker(
     appContext: Context,
     workerParams: WorkerParameters,

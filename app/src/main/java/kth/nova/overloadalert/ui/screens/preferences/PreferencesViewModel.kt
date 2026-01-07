@@ -15,6 +15,16 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/**
+ * ViewModel for managing the state and logic of the user preferences screen.
+ *
+ * This ViewModel handles loading user preferences, validating plan changes (e.g., checking if a
+ * configuration is valid for the selected plan), managing Google authentication states, and
+ * persisting updated preferences. It exposes a [PreferencesUiState] via a [StateFlow] to the UI.
+ *
+ * @property preferencesRepository The repository responsible for reading and writing user preferences.
+ * @property googleAuthRepository The repository responsible for handling Google sign-in and authentication.
+ */
 class PreferencesViewModel(
     private val preferencesRepository: PreferencesRepository,
     private val googleAuthRepository: GoogleAuthRepository

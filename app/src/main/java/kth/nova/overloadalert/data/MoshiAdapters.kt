@@ -8,6 +8,12 @@ import com.squareup.moshi.ToJson
 import kth.nova.overloadalert.domain.model.CombinedRisk
 import java.time.LocalDate
 
+/**
+ * A Moshi adapter for serializing and deserializing [LocalDate] objects.
+ *
+ * This adapter handles the conversion between [LocalDate] instances and their String representation
+ * (ISO-8601 format, e.g., "2023-10-27") for JSON processing.
+ */
 class LocalDateAdapter {
     @ToJson
     fun toJson(value: LocalDate): String {
@@ -20,6 +26,13 @@ class LocalDateAdapter {
     }
 }
 
+/**
+ * A custom Moshi adapter for serializing and deserializing [CombinedRisk] objects.
+ *
+ * This adapter handles the conversion between the `CombinedRisk` domain model and its JSON representation.
+ * It specifically manages the [Color] property by converting its ARGB value to a `Long` for storage
+ * and reconstructing the [Color] object from that `Long` value upon retrieval.
+ */
 class CombinedRiskAdapter {
 
     @ToJson
