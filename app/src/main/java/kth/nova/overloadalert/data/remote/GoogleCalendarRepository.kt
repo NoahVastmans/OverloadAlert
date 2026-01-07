@@ -3,6 +3,7 @@ package kth.nova.overloadalert.data.remote
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import retrofit2.Response
 import java.util.TimeZone
 
 class GoogleCalendarRepository(
@@ -53,7 +54,7 @@ class GoogleCalendarRepository(
         googleCalendarApiService.getEvent(calendarId, eventId)
     }
 
-    suspend fun deleteEvent(calendarId: String, eventId: String) = withContext(Dispatchers.IO) {
+    suspend fun deleteEvent(calendarId: String, eventId: String): Response<Unit> = withContext(Dispatchers.IO) {
         googleCalendarApiService.deleteEvent(calendarId, eventId)
     }
 }

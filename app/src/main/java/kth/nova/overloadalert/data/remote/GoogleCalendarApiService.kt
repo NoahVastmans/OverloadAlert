@@ -1,5 +1,6 @@
 package kth.nova.overloadalert.data.remote
 
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -44,5 +45,5 @@ interface GoogleCalendarApiService {
     suspend fun deleteEvent(
         @Path("calendarId") calendarId: String,
         @Path("eventId") eventId: String
-    )
+    ): Response<Unit>
 }

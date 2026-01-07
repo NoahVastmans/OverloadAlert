@@ -6,6 +6,7 @@ import com.squareup.moshi.JsonClass
 @JsonClass(generateAdapter = true)
 data class GoogleCalendarEvent(
     @field:Json(name = "id") val id: String? = null,
+    @field:Json(name = "status") val status: String? = null, // Added status field
     @field:Json(name = "summary") val summary: String? = null,
     @field:Json(name = "description") val description: String? = null,
     @field:Json(name = "start") val start: EventDateTime? = null,
