@@ -1,14 +1,17 @@
-package kth.nova.overloadalert.domain.plan
+package kth.nova.overloadalert.domain.usecases
 
-import android.util.Log
 import kth.nova.overloadalert.data.local.Run
 import kth.nova.overloadalert.domain.model.CachedAnalysis
-import kth.nova.overloadalert.domain.usecases.AnalyzeRunData
+import kth.nova.overloadalert.domain.plan.DailyPlan
+import kth.nova.overloadalert.domain.plan.PlanInput
+import kth.nova.overloadalert.domain.plan.ProgressionRate
+import kth.nova.overloadalert.domain.plan.RiskPhase
+import kth.nova.overloadalert.domain.plan.RunType
+import kth.nova.overloadalert.domain.plan.WeeklyTrainingPlan
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
-import java.time.temporal.TemporalAdjusters
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -43,13 +46,13 @@ class WeeklyTrainingPlanGenerator {
     fun generate(input: PlanInput, allRuns: List<Run>, analyzeRunData: AnalyzeRunData, cachedAnalysis: CachedAnalysis): WeeklyTrainingPlan {
         val today = LocalDate.now()
         val shouldRecompute = shouldRecomputeStructure(input, allRuns, today)
-        
+
         val runTypes = if (shouldRecompute) {
             createStructure(input)
         } else {
             input.previousPlan!!.runTypesStructure
         }
-        
+
         val weeklyVolume = calculateWeeklyVolume(input)
 
         var dailyDistances = distributeLoad(runTypes, weeklyVolume, input)
@@ -82,9 +85,9 @@ class WeeklyTrainingPlanGenerator {
 
         return WeeklyTrainingPlan(
             startDate = today,
-            days = dailyPlans, 
-            riskPhase = input.recentData.riskPhase, 
-            progressionRate = input.userPreferences.progressionRate, 
+            days = dailyPlans,
+            riskPhase = input.recentData.riskPhase,
+            progressionRate = input.userPreferences.progressionRate,
             runTypesStructure = runTypes,
             userPreferences = input.userPreferences
         )
@@ -109,7 +112,7 @@ class WeeklyTrainingPlanGenerator {
 
         // 2. Preferences Changed (Structural)
         val newPrefs = input.userPreferences
-        val oldPrefs = prev.userPreferences ?: return true 
+        val oldPrefs = prev.userPreferences ?: return true
 
         if (newPrefs.preferredLongRunDays != oldPrefs.preferredLongRunDays) return true
         if (newPrefs.forbiddenRunDays != oldPrefs.forbiddenRunDays) return true

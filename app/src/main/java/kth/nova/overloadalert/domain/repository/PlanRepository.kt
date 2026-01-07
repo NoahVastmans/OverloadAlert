@@ -2,7 +2,7 @@ package kth.nova.overloadalert.domain.repository
 
 import android.util.Log
 import kth.nova.overloadalert.data.RunningRepository
-import kth.nova.overloadalert.data.CalendarSyncService
+import kth.nova.overloadalert.domain.usecases.CalendarSyncService
 import kth.nova.overloadalert.data.local.PlanStorage
 import kth.nova.overloadalert.data.local.Run
 import kth.nova.overloadalert.domain.model.AcwrRiskLevel
@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kth.nova.overloadalert.domain.usecases.WeeklyTrainingPlanGenerator
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.temporal.ChronoUnit

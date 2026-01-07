@@ -6,9 +6,9 @@ import androidx.room.Room
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kth.nova.overloadalert.data.remote.StravaAuthRepository
-import kth.nova.overloadalert.data.CalendarSyncService
-import kth.nova.overloadalert.data.LocalDateAdapter
-import kth.nova.overloadalert.data.CombinedRiskAdapter
+import kth.nova.overloadalert.domain.usecases.CalendarSyncService
+import kth.nova.overloadalert.data.adapter.LocalDateAdapter
+import kth.nova.overloadalert.data.adapter.CombinedRiskAdapter
 import kth.nova.overloadalert.data.RunningRepository
 import kth.nova.overloadalert.data.remote.StravaTokenManager
 import kth.nova.overloadalert.data.local.AnalysisStorage
@@ -22,7 +22,7 @@ import kth.nova.overloadalert.data.remote.GoogleTokenManager
 import kth.nova.overloadalert.data.remote.StravaApiService
 import kth.nova.overloadalert.data.remote.StravaAuthService
 import kth.nova.overloadalert.data.remote.StravaTokenAuthenticator
-import kth.nova.overloadalert.domain.plan.WeeklyTrainingPlanGenerator
+import kth.nova.overloadalert.domain.usecases.WeeklyTrainingPlanGenerator
 import kth.nova.overloadalert.domain.repository.AnalysisRepository
 import kth.nova.overloadalert.domain.repository.PlanRepository
 import kth.nova.overloadalert.domain.repository.PreferencesRepository

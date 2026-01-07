@@ -1,4 +1,4 @@
-package kth.nova.overloadalert.data
+package kth.nova.overloadalert.data.adapter
 
 import androidx.compose.ui.graphics.Color
 import com.squareup.moshi.FromJson
@@ -9,9 +9,9 @@ import kth.nova.overloadalert.domain.model.CombinedRisk
 import java.time.LocalDate
 
 /**
- * A Moshi adapter for serializing and deserializing [LocalDate] objects.
+ * A Moshi adapter for serializing and deserializing [java.time.LocalDate] objects.
  *
- * This adapter handles the conversion between [LocalDate] instances and their String representation
+ * This adapter handles the conversion between [java.time.LocalDate] instances and their String representation
  * (ISO-8601 format, e.g., "2023-10-27") for JSON processing.
  */
 class LocalDateAdapter {
@@ -27,11 +27,11 @@ class LocalDateAdapter {
 }
 
 /**
- * A custom Moshi adapter for serializing and deserializing [CombinedRisk] objects.
+ * A custom Moshi adapter for serializing and deserializing [kth.nova.overloadalert.domain.model.CombinedRisk] objects.
  *
  * This adapter handles the conversion between the `CombinedRisk` domain model and its JSON representation.
- * It specifically manages the [Color] property by converting its ARGB value to a `Long` for storage
- * and reconstructing the [Color] object from that `Long` value upon retrieval.
+ * It specifically manages the [androidx.compose.ui.graphics.Color] property by converting its ARGB value to a `Long` for storage
+ * and reconstructing the [androidx.compose.ui.graphics.Color] object from that `Long` value upon retrieval.
  */
 class CombinedRiskAdapter {
 
