@@ -73,13 +73,16 @@ class CalendarSyncService(
             val dateStr = dailyPlan.date.toString()
             val syncEntity = calendarSyncDao.getSyncEntity(dateStr)
 
+            // CASE 1: Rest Day.
+            // If the plan says REST but we have a synced event for this day, it means
+            // there used to be a run here. We must delete it from the calendar.
             if (dailyPlan.runType == RunType.REST) {
                 if (syncEntity != null) {
                     try {
                         val response = googleCalendarRepository.deleteEvent(calendarId, syncEntity.googleEventId)
 
                         // 204 No Content is success. 404/410 means it's already gone.
-                        // In all these cases, we should remove the local DB record.
+                        // In all these cases, we should remove the local DB record so we don't try to delete it again.
                         if (response.isSuccessful || response.code() == 404 || response.code() == 410) {
                             calendarSyncDao.deleteSyncEntity(dateStr)
                         }
@@ -90,13 +93,17 @@ class CalendarSyncService(
                 return@forEach
             }
 
+            // CASE 2: Run Day.
+            // We need to ensure an event exists on the calendar.
             val distanceKm = String.Companion.format(Locale.US, "%.1f", dailyPlan.plannedDistance / 1000f)
             val eventTitle = "${dailyPlan.runType.name.lowercase().replaceFirstChar { it.uppercase() }} Run: $distanceKm km"
             val description = "Created by OverloadAlert"
 
             if (syncEntity != null) {
+                // If we already have a record, update the existing event.
                 updateEvent(calendarId, syncEntity, dailyPlan, dateStr, eventTitle, description)
             } else {
+                // If no record exists, create a new event.
                 createEvent(calendarId, dailyPlan, dateStr, eventTitle, description)
             }
         }
@@ -107,10 +114,17 @@ class CalendarSyncService(
             val existingEvent = googleCalendarRepository.getEvent(calendarId, syncEntity.googleEventId)
 
             // Check if the event is "cancelled" (in trash).
+            // This happens if the user manually deleted the event. We want to restore it ("undelete")
+            // so the user sees the plan again.
             val isCancelled = existingEvent.status == "cancelled"
 
+            // Check if the user manually set a time for the event.
+            // By default, we create all-day events (start.date). If start.dateTime is present, it's a timed event.
+            // We preserve this user preference by not overwriting 'start'/'end' fields if it's timed.
             val isTimedEvent = existingEvent.start?.dateTime != null
 
+            // Preserve any notes the user added to the description.
+            // We append the user's text after our standard "Created by OverloadAlert" footer.
             val currentDescription = existingEvent.description ?: ""
             val userNotes = if (currentDescription.contains("Created by OverloadAlert")) {
                 currentDescription.substringAfter("Created by OverloadAlert")
@@ -124,6 +138,8 @@ class CalendarSyncService(
                 summary = title,
                 description = newDescription,
                 status = if (isCancelled) "confirmed" else null,
+                // Only update dates if it's NOT a timed event.
+                // If the user set a time, we respect it and don't force it back to all-day.
                 start = if (isTimedEvent) null else EventDateTime(date = dateStr),
                 end = if (isTimedEvent) null else EventDateTime(date = dateStr)
             )
@@ -134,11 +150,13 @@ class CalendarSyncService(
                 syncEntity.copy(lastSyncedAt = System.currentTimeMillis(), userModifiedTime = isTimedEvent)
             )
         } catch (e: Exception) {
-            // Check if the event is truly gone (404 Not Found or 410 Gone)
+            // Check if the event is truly gone (404 Not Found or 410 Gone).
+            // If getEvent() or patchEvent() failed because the ID is invalid, we must assume the event is lost.
             val isGone = (e is HttpException && (e.code() == 404 || e.code() == 410)) ||
                     (e.message?.let { it.contains("404") || it.contains("410") } == true)
 
             if (isGone) {
+                // Self-healing: Create a new event to replace the missing one.
                 createEvent(calendarId, dailyPlan, dateStr, title, description)
             }
         }
@@ -155,6 +173,7 @@ class CalendarSyncService(
 
             val createdEvent = googleCalendarRepository.createEvent(calendarId, event)
 
+            // Save the mapping between the plan date and the Google Event ID.
             createdEvent.id?.let {
                 calendarSyncDao.insertOrUpdate(
                     CalendarSyncEntity(

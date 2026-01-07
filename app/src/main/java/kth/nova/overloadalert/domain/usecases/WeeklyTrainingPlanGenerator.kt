@@ -45,6 +45,7 @@ class WeeklyTrainingPlanGenerator {
 
     fun generate(input: PlanInput, allRuns: List<Run>, analyzeRunData: AnalyzeRunData, cachedAnalysis: CachedAnalysis): WeeklyTrainingPlan {
         val today = LocalDate.now()
+        // Determine if we need to regenerate the structure (which days/types) or can simply adjust volumes.
         val shouldRecompute = shouldRecomputeStructure(input, allRuns, today)
 
         val runTypes = if (shouldRecompute) {
@@ -53,18 +54,30 @@ class WeeklyTrainingPlanGenerator {
             input.previousPlan!!.runTypesStructure
         }
 
+        // Calculate the goal volume for this week based on progression settings.
         val weeklyVolume = calculateWeeklyVolume(input)
 
+        // Initial naive distribution of volume based on run types.
         var dailyDistances = distributeLoad(runTypes, weeklyVolume, input)
         var twoBack: Map<DayOfWeek, Float>? = null
 
+        // Optimization Loop:
+        // Because clamping a run to a safe range (validation) changes the total weekly volume,
+        // we need to re-distribute (rebalance) the difference to other days.
+        // We iterate until the plan stabilizes (converges) or we hit a limit.
         if (input.recentData.riskPhase != RiskPhase.DELOAD || input.recentData.riskPhase != RiskPhase.REBUILDING) {
             for (i in 0 until 10) {
                 val before = dailyDistances.toMap()
+
+                // 1. Simulate the week and clamp runs to safe physiological ranges.
                 val (validatedDistances, safeRanges) = validateAndAdjustPlan(dailyDistances.toMutableMap(), analyzeRunData, cachedAnalysis)
+
+                // 2. Redistribute any volume lost or gained during validation to other days.
                 dailyDistances = rebalanceVolume(validatedDistances.toMutableMap(), weeklyVolume, runTypes, safeRanges)
 
+                // Check for convergence (stability)
                 if (maxDelta(dailyDistances, before) < 0.1) {break}
+                // Check for oscillation (flipping between two states)
                 if (twoBack != null && maxDelta(dailyDistances, twoBack) < 0.1f) {break}
                 twoBack = before
             }
@@ -107,10 +120,10 @@ class WeeklyTrainingPlanGenerator {
     private fun shouldRecomputeStructure(input: PlanInput, runsForPlanning: List<Run>, today: LocalDate): Boolean {
         val prev = input.previousPlan ?: return true // No previous plan, must compute
 
-        // 1. Risk Phase Changed
+        // 1. Risk Phase Changed: If we moved from Normal to Deload, structure usually changes.
         if (input.recentData.riskPhase != prev.riskPhase) return true
 
-        // 2. Preferences Changed (Structural)
+        // 2. Preferences Changed (Structural): e.g. User changed preferred long run day.
         val newPrefs = input.userPreferences
         val oldPrefs = prev.userPreferences ?: return true
 
@@ -119,7 +132,7 @@ class WeeklyTrainingPlanGenerator {
         if (newPrefs.maxRunsPerWeek != oldPrefs.maxRunsPerWeek) return true
 
         // 3. Adherence Check
-        // If the user skipped a run or ran on a rest day yesterday, we should recompute.
+        // If the user skipped a run or ran on a rest day yesterday, we should recompute to adapt.
         val yesterday = today.minusDays(1)
         val prevPlanDay = prev.days.find { it.date == yesterday }
 
@@ -152,17 +165,13 @@ class WeeklyTrainingPlanGenerator {
         var discrepancy = targetVolume - distances.values.sum()
         if (discrepancy == 0f) return distances
 
-        // Group days by run type
+        // Group days by run type to prioritize volume adjustments
         val shortDays = runTypes.filter { it.value == RunType.SHORT }.keys.toList()
         val moderateDays = runTypes.filter { it.value == RunType.MODERATE }.keys.toList()
         val longDays = runTypes.filter { it.value == RunType.LONG }.keys.toList()
 
-        // Determine order and min/max targets
         val add = discrepancy > 0
         var remaining = abs(discrepancy)
-
-        if (add) listOf(shortDays, moderateDays, longDays)
-        else listOf(longDays, moderateDays, shortDays)
 
         // Helper to get current, min, max
         fun current(day: DayOfWeek) = distances[day] ?: 0f
@@ -170,7 +179,10 @@ class WeeklyTrainingPlanGenerator {
         fun minSafe(day: DayOfWeek) = safeRanges[day]?.first ?: 0f
 
         if (add) {
-            // Stepwise leveling: Short → Moderate → Long → All
+            // Priority for ADDING volume:
+            // 1. Short runs (fill them up first as they are easiest to recover from)
+            // 2. Moderate runs
+            // 3. Long run (last resort to avoid making it too long)
             val targets = listOf(
                 shortDays to { day: DayOfWeek -> moderateDays.mapNotNull { current(it) }.minOrNull() ?: current(day) },
                 moderateDays to { day: DayOfWeek -> longDays.mapNotNull { current(it) }.minOrNull() ?: current(day) },
@@ -189,7 +201,10 @@ class WeeklyTrainingPlanGenerator {
                 }
             }
         } else {
-            // Stepwise lowering: Long → Moderate → Short → All
+            // Priority for CUTTING volume:
+            // 1. Long run (reduce risk of longest effort first)
+            // 2. Moderate runs
+            // 3. Short runs (keep frequency if possible)
             val targets = listOf(
                 longDays to { day: DayOfWeek -> moderateDays.mapNotNull { current(it) }.maxOrNull() ?: current(day) },
                 moderateDays to { day: DayOfWeek -> shortDays.mapNotNull { current(it) }.maxOrNull() ?: current(day) },
@@ -225,25 +240,31 @@ class WeeklyTrainingPlanGenerator {
         val validationOrder = (0..6).map { dayValues[(todayIndex + it) % 7] }
         val safeRanges = mutableMapOf<DayOfWeek, Pair<Float, Float>>()
 
+        // Accumulator for simulated runs. As we step through the week, we add the *adjusted* runs
+        // to this list so subsequent days "know" about the load from earlier in the week.
         val simulatedRuns = mutableListOf<Run>()
         for (dayToValidate in validationOrder) {
             val plannedDistance = distances[dayToValidate] ?: 0f
 
             val simulatedDate = today.plusDays(validationOrder.indexOf(dayToValidate).toLong())
 
+            // "What-if" analysis: What is the load state on this day given the history + simulated week so far?
             val analysisForDay = analyzeRunData.getAnalysisForFutureDate(cachedAnalysis, simulatedRuns, simulatedDate).runAnalysis ?: continue
 
             var adjustedDistance = 0f
             if (plannedDistance != 0f) {
+                // Get safe bounds from the analysis (derived from ACWR and chronic load)
                 val minSafe = analysisForDay.minRecommendedTodaysRun
                 val maxSafe = analysisForDay.recommendedTodaysRun
                 safeRanges[dayToValidate] = minSafe to maxSafe
 
+                // Clamp the planned distance to the safe range
                 adjustedDistance = plannedDistance.coerceIn(minSafe, maxSafe)
                 distances[dayToValidate] = adjustedDistance
             }
-            val movingTimes = (adjustedDistance * 5).toInt()
+            val movingTimes = (adjustedDistance * 5).toInt() // raw estimate, just to have some moving time
 
+            // Add this finalized run for this day to the simulation context for the next day's check
             simulatedRuns.add(
                 Run(
                     id = dayToValidate.value.toLong() * -1, // Dummy ID
@@ -380,9 +401,6 @@ class WeeklyTrainingPlanGenerator {
             selectedEasy.forEach { runTypes[it] = RunType.SHORT }
         }
 
-
-
-
         return runTypes
     }
 
@@ -471,11 +489,6 @@ class WeeklyTrainingPlanGenerator {
     private fun DayOfWeek.isAdjacentTo(other: DayOfWeek): Boolean {
         val diff = abs(this.value - other.value)
         return diff == 1 || diff == 6 // handles wrap-around (Sunday ↔ Monday)
-    }
-
-    private fun distanceInDays(a: DayOfWeek, b: DayOfWeek): Int {
-        val diff = abs(a.value - b.value)
-        return min(diff, 7 - diff)
     }
 
 }

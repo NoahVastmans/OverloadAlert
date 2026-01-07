@@ -41,34 +41,44 @@ class RunningRepositoryImpl(
     override suspend fun syncRuns(): Result<Boolean> {
         return try {
             var dataChanged = false
+            // Get current state of local database
             val localRunsSnapshot = getAllRuns().first()
+            
+            // Determine fetch window:
+            // If DB is empty, fetch a long history (160 days) to bootstrap analysis.
+            // If DB has data, only fetch recent days (5 days) to catch new runs or recent edits.
             val daysToFetch = if (localRunsSnapshot.isEmpty()) 160L else 5L
             val fetchSinceDate = LocalDate.now().minusDays(daysToFetch)
 
             val nowEpoch = LocalDate.now().plusDays(1).atStartOfDay().toEpochSecond(ZoneOffset.UTC)
             val fetchSinceEpoch = fetchSinceDate.atStartOfDay().toEpochSecond(ZoneOffset.UTC)
 
+            // Fetch from Strava API
             val remoteActivities = stravaApiService.getActivities(
                 before = nowEpoch,
                 after = fetchSinceEpoch,
                 perPage = 200
-            ).filter { it.type == "Run" }
+            ).filter { it.type == "Run" } // Only interested in Runs
 
             val remoteIds = remoteActivities.map { it.id }.toSet()
             
             // Only consider local runs within the fetched time window for deletion checks.
+            // This prevents us from accidentally deleting old runs that weren't returned by the API query.
             val localRunsInWindow = localRunsSnapshot.filter {
                 OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(fetchSinceDate.minusDays(1))
             }
 
-            // 1. Find runs to delete (present in the local window but not remotely)
+            // 1. Detection Deletions:
+            // If a run exists locally in the window but is NOT in the remote list, 
+            // it means the user deleted it on Strava. We should delete it locally.
             val runsToDelete = localRunsInWindow.filter { it.id !in remoteIds }
             if (runsToDelete.isNotEmpty()) {
                 runDao.deleteRuns(runsToDelete)
                 dataChanged = true
             }
 
-            // 2. Find runs to add (present remotely but not locally)
+            // 2. Detect Insertions:
+            // If a run exists remotely but NOT locally, it's new. Insert it.
             val localIds = localRunsSnapshot.map { it.id }.toSet()
             val runsToAdd = remoteActivities.filter { it.id !in localIds }.map {
                 Run(

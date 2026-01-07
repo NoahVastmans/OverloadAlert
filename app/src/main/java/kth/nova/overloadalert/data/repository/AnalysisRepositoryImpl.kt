@@ -51,21 +51,29 @@ class AnalysisRepositoryImpl(
     coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.Default)
 ) : AnalysisRepository {
 
+    // Holds the raw cached data structure in memory to avoid repeated disk reads.
     private val _latestCachedAnalysis: MutableStateFlow<CachedAnalysis?> =
         MutableStateFlow(analysisStorage.load())
     override val latestCachedAnalysis: StateFlow<CachedAnalysis?> = _latestCachedAnalysis.asStateFlow()
 
     override val latestAnalysis: StateFlow<UiAnalysisData?> = runningRepository.getAllRuns()
-        .map { runs -> AnalysisKey(runs.hashCode()) } // Create a key from the current runs
-        .distinctUntilChanged() // Only proceed if the runs have actually changed
+        // Map runs to a lightweight key (hash code) to detect changes efficiently without passing heavy lists downstream.
+        .map { runs -> AnalysisKey(runs.hashCode()) }
+        // Only trigger recalculations if the run list content has actually changed.
+        .distinctUntilChanged()
         .flatMapLatest { key ->
             flow {
                 val cached = _latestCachedAnalysis.value
                 val today = LocalDate.now()
 
+                // Check if the cache exists but contains no meaningful data (e.g., initialized but not populated).
                 val isCacheEmpty = cached?.acwrByDate.isNullOrEmpty()
 
-                // Determine if the cache is stale by checking the hash OR if the day has changed.
+                // Determine if the cache is stale. It is stale if:
+                // 1. It doesn't exist (null).
+                // 2. It's effectively empty.
+                // 3. The run data hash differs from what was stored (data changed).
+                // 4. The cache is from a previous day (we need to recalculate metrics relative to "today").
                 val isStale = cached == null ||
                         isCacheEmpty ||
                         key.runIdsHash != cached.lastRunHash ||
@@ -74,22 +82,29 @@ class AnalysisRepositoryImpl(
                 if (isStale) {
                     val runs = runningRepository.getAllRuns().first()
 
-                    // If the cache is effectively empty, we treat it as null to force a full re-analysis of ALL runs.
-                    // Otherwise, we do a standard incremental update.
+                    // If the cache is effectively empty or null, we force a full re-analysis.
+                    // Otherwise, we perform an incremental update on top of the existing cache.
                     val effectiveCache = if (isCacheEmpty) null else cached
 
-                    val overlapDate = today.minusDays(5)
+                    // We recalculate the tail end of the analysis to ensure chronic load (28-day window)
+                    // and other rolling metrics adjust correctly to the new data or new date.
+                    val overlapDate = today.minusDays(40)
                     val updatedCache = analyzeRunData.updateAnalysisFrom(
                         effectiveCache,
                         runs,
                         overlapDate,
                         AnalysisMode.PERSISTENT
                     )
+                    
+                    // Persist the fresh analysis and update the in-memory state.
                     analysisStorage.save(updatedCache)
                     _latestCachedAnalysis.value = updatedCache
+                    
+                    // Emit the UI-ready data derived from the new cache.
                     emit(analyzeRunData.deriveUiDataFromCache(updatedCache, today))
                 } else {
-                    // Even if cached, derive UI data to ensure it matches current date context
+                    // Cache is fresh. Emit UI data immediately derived from the existing cache.
+                    // We re-derive purely to ensure any UI-specific date formatting matches "today".
                     cached?.let { emit(analyzeRunData.deriveUiDataFromCache(it, today)) }
                 }
             }
@@ -97,6 +112,7 @@ class AnalysisRepositoryImpl(
         .stateIn(
             scope = coroutineScope,
             started = SharingStarted.WhileSubscribed(5000),
+            // Start with initial data from disk if available, to show UI immediately on app launch.
             initialValue = _latestCachedAnalysis.value?.let { analyzeRunData.deriveUiDataFromCache(it, LocalDate.now()) }
         )
 }

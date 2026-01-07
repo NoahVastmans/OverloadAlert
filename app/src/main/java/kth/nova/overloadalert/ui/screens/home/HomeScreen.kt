@@ -7,10 +7,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
@@ -82,6 +86,8 @@ fun HomeScreen(viewModel: HomeViewModel, onNavigateToPreferences: () -> Unit) {
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets.systemBars
+            .only(WindowInsetsSides.Top),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -125,7 +131,7 @@ fun HomeScreen(viewModel: HomeViewModel, onNavigateToPreferences: () -> Unit) {
                 CircularProgressIndicator()
             } else if (uiState.riskCard != null && uiState.recommendationCard != null) {
                 RiskAnalysisCard(uiState.riskCard!!)
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.weight(1f))
                 RecommendationCard(uiState.recommendationCard!!)
             } else {
                 Text("No data available. Please sync with Strava.")
@@ -139,7 +145,7 @@ fun HomeScreen(viewModel: HomeViewModel, onNavigateToPreferences: () -> Unit) {
                     .padding(bottom = 16.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(vertical = 8.dp, horizontal = 16.dp),
+                    .padding(vertical = 16.dp, horizontal = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Image(

@@ -75,9 +75,11 @@ class PlanRepositoryImpl(
 
     override val latestPlan: StateFlow<WeeklyTrainingPlan?> = flow {
         // 1. Emit the stored plan first
+        // Fast path: show what we have immediately on app launch.
         emit(planStorage.loadPlan())
 
         // 2. Create the generation key flow, now including the latest analysis
+        // We combine all inputs that could trigger a plan change: preferences, run history, and analysis metrics.
         val generationKeyFlow = combine(
             preferencesRepository.preferencesFlow,
             runningRepository.getAllRuns(),
@@ -85,6 +87,8 @@ class PlanRepositoryImpl(
             analysisRepository.latestCachedAnalysis.filterNotNull()
         ) { preferences, allRuns, analysisData, cachedAnalysis ->
             val today = LocalDate.now()
+            // We only consider runs before today for historical analysis to avoid circular dependencies
+            // or reacting to the planned run itself if it was just logged.
             val runsForPlanning = allRuns.filter {
                 OffsetDateTime.parse(it.startDateLocal).toLocalDate().isBefore(today)
             }
@@ -101,6 +105,7 @@ class PlanRepositoryImpl(
             )
         }.distinctUntilChanged { old, new ->
             // Only regenerate if the key changes. The analysis data is implicitly tied to the runs hash.
+            // Optimization: We check if the inputs that *define* the plan structure have changed.
             old.key == new.key
         }
 
@@ -109,6 +114,11 @@ class PlanRepositoryImpl(
             val storedPlan = planStorage.loadPlan()
 
             // Decide if regeneration is needed
+            // A plan needs regeneration if:
+            // - It doesn't exist.
+            // - It's outdated (previous day/week).
+            // - User settings changed.
+            // - Historical runs changed (e.g., sync, deletion).
             val needsRegeneration = storedPlan == null ||
                     storedPlan.startDate != context.key.planningDate ||
                     storedPlan.userPreferences != context.key.userPreferences ||
@@ -134,7 +144,7 @@ class PlanRepositoryImpl(
         val runAnalysis = context.runAnalysis!!
         val runsForPlanning = context.runsForPlanning
 
-        // We no longer call analyzeRunData() here. We use the passed runAnalysis.
+        // historicalDataAnalyzer determines typical running days and volumes from the last 8 weeks.
         val relevantHistoricalRuns = runsForPlanning.filter {
             OffsetDateTime.parse(it.startDateLocal)
                 .toLocalDate()
@@ -144,10 +154,13 @@ class PlanRepositoryImpl(
         val historicalData = historicalDataAnalyzer(relevantHistoricalRuns)
 
         // --- Start of Risk/Progression Logic ---
+        // This section acts as a state machine for managing injury risk.
         val today = key.planningDate
         val override = planStorage.loadRiskOverride()
         val daysSinceOverride = override?.let { ChronoUnit.DAYS.between(it.startDate, today) }
 
+        // Determine multipliers based on current risk status.
+        // Lower multipliers reduce volume to allow recovery.
         val freshAcwrMultiplier = when (runAnalysis.acwrAssessment?.riskLevel) {
             AcwrRiskLevel.UNDERTRAINING -> 0.9f
             AcwrRiskLevel.OPTIMAL -> 1.0f
@@ -168,7 +181,12 @@ class PlanRepositoryImpl(
         val freshAcwrRiskDetected = freshAcwrMultiplier < 1.0f
         val freshLongRunRiskDetected =  freshLongRunMultiplier < 1.1f
 
+        // State Machine for Risk Override:
+        // - Null -> Risk Detected: Enter DELOAD/REBUILDING or LIMITED mode.
+        // - DELOAD/REBUILDING -> Recovery: If metrics improve, move to COOLDOWN or REBUILDING.
+        // - COOLDOWN/LIMITED -> Expiry: After 7 days, remove override if stable.
         val nextOverride = when {
+            // New ACWR risk: Trigger immediate deload or rebuilding phase
             override == null && freshAcwrRiskDetected ->
                 RiskOverride(
                     startDate = today,
@@ -176,6 +194,7 @@ class PlanRepositoryImpl(
                     acwrMultiplier = freshAcwrMultiplier,
                     longRunMultiplier = freshLongRunMultiplier
                 )
+            // New Single Run risk: Limit long runs specifically
             override == null && freshLongRunRiskDetected ->
                 RiskOverride(
                     startDate = today,
@@ -183,18 +202,21 @@ class PlanRepositoryImpl(
                     acwrMultiplier = freshAcwrMultiplier,
                     longRunMultiplier = freshLongRunMultiplier
                 )
+            // Transition from DELOAD: If recovering, move to COOLDOWN or stay in REBUILDING
             override?.phase == RiskPhase.DELOAD && freshAcwrMultiplier >= 0.9f ->
                 override.copy(
                     startDate = today,
                     phase = if (freshAcwrMultiplier > 0.9f) RiskPhase.COOLDOWN else RiskPhase.REBUILDING,
                     acwrMultiplier = freshAcwrMultiplier
                 )
+            // Transition from REBUILDING: If fully recovered, start COOLDOWN
             override?.phase == RiskPhase.REBUILDING && freshAcwrMultiplier > 0.9f ->
                 override.copy(
                     startDate = today,
                     phase = RiskPhase.COOLDOWN,
                     acwrMultiplier = freshAcwrMultiplier
                 )
+            // Relapse in COOLDOWN: Go back to DELOAD/REBUILDING
             override?.phase == RiskPhase.COOLDOWN && freshAcwrRiskDetected ->
                 RiskOverride(
                     startDate = today,
@@ -202,6 +224,7 @@ class PlanRepositoryImpl(
                     acwrMultiplier = freshAcwrMultiplier,
                     longRunMultiplier = freshLongRunMultiplier
                 )
+            // Expiry: Remove restrictions after 7 days if stable
             override?.phase == RiskPhase.COOLDOWN && daysSinceOverride!! >= 7 -> null
             override?.phase == RiskPhase.LONG_RUN_LIMITED && daysSinceOverride!! >= 7 -> null
             else -> override
@@ -211,6 +234,7 @@ class PlanRepositoryImpl(
             planStorage.saveRiskOverride(nextOverride)
         }
 
+        // Apply constraints based on the determined phase
         var acwrMultiplier = 1.0f
         var longRunMultiplier = 1.1f
         var effectiveProgressionRate = key.userPreferences.progressionRate
@@ -219,17 +243,18 @@ class PlanRepositoryImpl(
             RiskPhase.DELOAD, RiskPhase.REBUILDING -> {
                 acwrMultiplier = nextOverride.acwrMultiplier
                 longRunMultiplier = nextOverride.longRunMultiplier
-                effectiveProgressionRate = ProgressionRate.RETAIN
+                effectiveProgressionRate = ProgressionRate.RETAIN // Halt progression during recovery
             }
             RiskPhase.COOLDOWN, RiskPhase.LONG_RUN_LIMITED -> {
                 longRunMultiplier = nextOverride.longRunMultiplier
                 if (key.userPreferences.progressionRate == ProgressionRate.FAST) {
-                    effectiveProgressionRate = ProgressionRate.SLOW
+                    effectiveProgressionRate = ProgressionRate.SLOW // Slow down progression after injury/risk
                 }
             }
             null -> Unit
         }
 
+        // Calculate target volumes
         val baseWeeklyVolume = runAnalysis.chronicLoad
         val baseMaxLongRun = runAnalysis.safeLongRun
         val adjustedWeeklyVolume = baseWeeklyVolume * acwrMultiplier
@@ -251,11 +276,13 @@ class PlanRepositoryImpl(
         )
 
         // Generate and Store
+        // The generator creates specific daily distances using the cached analysis for future simulation validation.
         val newPlan = planGenerator.generate(planInput, runsForPlanning, analyzeRunData, context.cachedAnalysis)
             .copy(historicalRunsHash = key.historicalRunsHash)
         planStorage.savePlan(newPlan)
 
         // Trigger Sync
+        // Update Google Calendar immediately with the new plan.
         coroutineScope.launch {
             calendarSyncService.syncPlanToCalendar(newPlan)
         }

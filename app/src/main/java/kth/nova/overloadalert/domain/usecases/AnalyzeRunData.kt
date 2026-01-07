@@ -65,18 +65,25 @@ class AnalyzeRunData {
      * @return A new [CachedAnalysis] object containing the updated series and metrics.
      */
     fun updateAnalysisFrom(cached: CachedAnalysis?, runs: List<Run>, overlapDate: LocalDate, mode: AnalysisMode): CachedAnalysis {
-        if (cached == null) {
+        // Robust check: If cache is null OR the ACWR map is empty, we can't reliably update incrementally.
+        // Fall back to a full analysis.
+        if (cached == null || cached.acwrByDate.isEmpty()) {
             val startDate = runs.minOfOrNull { OffsetDateTime.parse(it.startDateLocal).toLocalDate() } ?: LocalDate.now()
             return performFullAnalysis(runs, startDate, LocalDate.now())
         }
 
-        val startDate = cached.acwrByDate.keys.minOrNull()?: overlapDate
+        // Now safe to assume keys exist
+        val startDate = cached.acwrByDate.keys.minOrNull() ?: overlapDate
+
+        // Calculate where in the cached arrays we need to start appending new data.
         val overlapIndex = ChronoUnit.DAYS.between(startDate, overlapDate).toInt()
         if (overlapIndex < 0) {
-            val startDate = runs.minOfOrNull { OffsetDateTime.parse(it.startDateLocal).toLocalDate() } ?: LocalDate.now()
-            return performFullAnalysis(runs, startDate, LocalDate.now())
+            val fullStartDate = runs.minOfOrNull { OffsetDateTime.parse(it.startDateLocal).toLocalDate() } ?: LocalDate.now()
+            return performFullAnalysis(runs, fullStartDate, LocalDate.now())
         }
 
+        // For simulation, we extend the series only as far as the simulated runs go.
+        // For persistent mode, we update until "today".
         val seriesEndDate = if (mode == AnalysisMode.SIMULATION) {
             val date = runs.maxOfOrNull { OffsetDateTime.parse(it.startDateLocal).toLocalDate() } ?: overlapDate
             date.plusDays(1)
@@ -84,12 +91,15 @@ class AnalyzeRunData {
             LocalDate.now()
         }
 
+        // 1. Truncate daily loads history
         val truncatedDailyLoads = cached.dailyLoads.take(overlapIndex)
+        // 2. Compute new daily loads for the update window
         val updatedRuns = runs.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate().isAfter(overlapDate.minusDays(1)) }
         val newDailyLoads = createDailyLoadSeries(updatedRuns, overlapDate, seriesEndDate)
 
         val combinedDailyLoads = truncatedDailyLoads + newDailyLoads
 
+        // 3. Apply rolling caps (IQR filtering) to outliers
         val previousCappedLoads = cached.cappedDailyLoads.take(overlapIndex)
         val newCaps = appendRollingLoadCaps(truncatedDailyLoads, newDailyLoads)
         val newCappedDailyLoads =
@@ -99,19 +109,19 @@ class AnalyzeRunData {
             }
         val cappedDailyLoads = previousCappedLoads + newCappedDailyLoads
 
+        // 4. Update Acute Load (7-day window)
         val previousAcute = cached.acuteLoadSeries.take(overlapIndex)
         val newAcute = appendRollingSum(cached.dailyLoads.take(overlapIndex), newDailyLoads, 7)
         val acuteLoadSeries = previousAcute + newAcute
-
         val newCappedAcuteLoad = appendRollingSum(previousCappedLoads, newCappedDailyLoads, window = 7)
 
+        // 5. Update Chronic Load (28-day EWMA)
         val previousChronic = cached.chronicLoadSeries.take(overlapIndex)
         val lastChronic = previousChronic.lastOrNull() ?: 0f
-
         val newChronic = appendEwma(lastChronic, newCappedAcuteLoad, 28)
-
         val chronicLoadSeries = previousChronic + newChronic
 
+        // 6. Update ACWR Map
         val acwrByDate = appendAcwrMap(cached.acwrByDate, startDate, overlapIndex, acuteLoadSeries, chronicLoadSeries)
 
         var finalSmoothed = cached.smoothedLongestRunThresholds
@@ -122,6 +132,9 @@ class AnalyzeRunData {
         }.toMutableMap()
         var baselineByDate = mapOf<LocalDate, Float>()
 
+        // 7. Update Longest Run Baseline (Persistent Mode Only)
+        // Calculating thresholds requires scanning run history which can be expensive.
+        // We skip this for simulations because we don't have the required historical data.
         if (mode == AnalysisMode.PERSISTENT) {
             val totalDays = ChronoUnit.DAYS.between(startDate, LocalDate.now()).toInt() + 1
             val rawThresholds =
@@ -138,10 +151,12 @@ class AnalyzeRunData {
             }
         }
 
+        // 8. Update Individual Run Risks
         val newCombinedRiskByRunID = mutableMapOf<Long, CombinedRisk>()
         runs.filter { OffsetDateTime.parse(it.startDateLocal).toLocalDate() >= overlapDate }
             .forEach { run ->
                 val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
+                // Use calculated baseline for persistent mode, or just carry over last known baseline for simulation
                 val baseline = if(mode == AnalysisMode.PERSISTENT) baselineByDate[runDate] ?: 0f else finalSmoothed.last()
                 val runSingleRisk = calculateRisk(run.distance, baseline)
                 newCombinedRiskByRunID[run.id] =
@@ -193,7 +208,7 @@ class AnalyzeRunData {
         val singleRunRisk = combinedRisk.toSingleRunRisk()
         val safeLongestRunForDisplay = stableBaseline
 
-
+        // Calculate prescriptive recommendations
         val todaysLoad = dailyLoads.lastOrNull() ?: 0f
         val remainingLongestRun = safeLongestRunForDisplay - todaysLoad
         val remainingChronicLoad = chronicLoad * 1.3f - acuteLoad
@@ -207,7 +222,7 @@ class AnalyzeRunData {
             acwrByDate[today], singleRunRisk
         )
 
-        // Data For GraphsScreen
+        // Prepare Data For GraphsScreen (Last 30 Days)
         val finalDateLabels = (0..29).map { today.minusDays(29L - it).dayOfMonth.toString() }
         val dailyLoadBars = dailyLoads.takeLast(30).mapIndexed { index, value -> BarEntry(index.toFloat(), value) }
         val longestRunThresholdLine = smoothedLongestRunThresholds.takeLast(30).mapIndexed { index, value -> Entry(index.toFloat(), value) }
@@ -233,18 +248,21 @@ class AnalyzeRunData {
      * @return A fresh [CachedAnalysis] object.
      */
     fun performFullAnalysis(runs: List<Run>, startDate: LocalDate, endDate: LocalDate): CachedAnalysis {
+        // 1. Create daily load series with zeros added on days without run data
         val dailyLoads = createDailyLoadSeries(runs, startDate, endDate)
+        // 2. Apply rolling caps (IQR filtering) to outliers
         val loadCapSeries = createRollingLoadCapSeries(dailyLoads)
         val cappedDailyLoads = dailyLoads.mapIndexed { i, load ->
             val cap = loadCapSeries[i]
             if (cap > 0f) load.coerceAtMost(cap) else load
         }
 
-
+        // 3. Calculate Acute and Chronic loads
         val acuteLoadSeries = calculateRollingSum(cappedDailyLoads, 7)
         val cappedAcuteLoadSeries = calculateRollingSum(cappedDailyLoads, 7)
         val chronicLoadSeries = calculateEwma(cappedAcuteLoadSeries, 28)
 
+        // 4. Build ACWR Map
         val acwrByDate = mutableMapOf<LocalDate, AcwrAssessment>()
         dailyLoads.indices.forEach { i ->
             val date = startDate.plusDays(i.toLong())
@@ -255,6 +273,7 @@ class AnalyzeRunData {
             if (assessment != null) {acwrByDate[date] = assessment}
         }
 
+        // 5. Calculate Longest Run Thresholds based on the longest safe run of the 30 days prior
         val longestRunThresholds = (0 until dailyLoads.size).map { i ->
             val date = startDate.plusDays(i.toLong())
             val thirtyDaysBefore = date.minusDays(30)
@@ -270,8 +289,8 @@ class AnalyzeRunData {
             startDate.plusDays(i.toLong()) to smoothedLongestRunThresholds[i]
         }
 
+        // 6. Calculate the combined risk for each run
         val combinedRiskByRunID = mutableMapOf<Long, CombinedRisk>()
-        // Recompute risk for runs on or after overlapDate
         runs.forEach { run ->
                 val runDate = OffsetDateTime.parse(run.startDateLocal).toLocalDate()
                 val baseline = baselineByDate[runDate] ?: 0f
