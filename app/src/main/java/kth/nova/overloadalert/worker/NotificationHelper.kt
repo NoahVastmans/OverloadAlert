@@ -46,7 +46,7 @@ class NotificationHelper(private val context: Context) {
 
     fun showWarningNotification(title: String, message: String) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground) // TODO: Replace with a proper warning icon
+            .setSmallIcon(R.drawable.logo_overloadalert_red)
             .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
@@ -59,7 +59,7 @@ class NotificationHelper(private val context: Context) {
 
     fun showEncouragementNotification(title: String, message: String) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground) // TODO: Replace with a proper positive icon
+            .setSmallIcon(R.drawable.logo_overloadalert_green)
             .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
