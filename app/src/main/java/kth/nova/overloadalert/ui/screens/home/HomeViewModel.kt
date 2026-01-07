@@ -3,7 +3,7 @@ package kth.nova.overloadalert.ui.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import kth.nova.overloadalert.data.RunningRepository
+import kth.nova.overloadalert.domain.repository.RunningRepository
 import kth.nova.overloadalert.data.remote.StravaTokenManager
 import kth.nova.overloadalert.domain.repository.AnalysisRepository
 import kotlinx.coroutines.delay

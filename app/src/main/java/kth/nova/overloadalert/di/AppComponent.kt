@@ -9,7 +9,7 @@ import kth.nova.overloadalert.data.remote.StravaAuthRepository
 import kth.nova.overloadalert.domain.usecases.CalendarSyncService
 import kth.nova.overloadalert.data.adapter.LocalDateAdapter
 import kth.nova.overloadalert.data.adapter.CombinedRiskAdapter
-import kth.nova.overloadalert.data.RunningRepository
+import kth.nova.overloadalert.domain.repository.RunningRepository
 import kth.nova.overloadalert.data.remote.StravaTokenManager
 import kth.nova.overloadalert.data.local.AnalysisStorage
 import kth.nova.overloadalert.data.local.AppDatabase
@@ -38,6 +38,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.launchIn
+import kth.nova.overloadalert.data.repository.AnalysisRepositoryImpl
+import kth.nova.overloadalert.data.repository.PlanRepositoryImpl
+import kth.nova.overloadalert.data.repository.PreferencesRepositoryImpl
+import kth.nova.overloadalert.data.repository.RunningRepositoryImpl
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -153,9 +157,21 @@ class AppComponent(context: Context) {
     val analysisStorage by lazy { AnalysisStorage(context, moshi) }
 
     val stravaAuthRepository: StravaAuthRepository by lazy { StravaAuthRepository(stravaAuthService, stravaTokenManager) }
-    val runningRepository: RunningRepository by lazy { RunningRepository(appDatabase.runDao(), stravaApiService, stravaTokenManager) }
+    val runningRepository: RunningRepository by lazy {
+        RunningRepositoryImpl(
+            appDatabase.runDao(),
+            stravaApiService,
+            stravaTokenManager
+        )
+    }
     val googleCalendarRepository: GoogleCalendarRepository by lazy { GoogleCalendarRepository(googleCalendarApiService) }
-    val preferencesRepository: PreferencesRepository by lazy { PreferencesRepository(context, googleTokenManager, appScope) }
+    val preferencesRepository: PreferencesRepository by lazy {
+        PreferencesRepositoryImpl(
+            context,
+            googleTokenManager,
+            appScope
+        )
+    }
 
     val analyzeRunData: AnalyzeRunData by lazy { AnalyzeRunData() }
     private val historicalDataAnalyzer: HistoricalDataAnalyzer by lazy { HistoricalDataAnalyzer() }
@@ -164,16 +180,18 @@ class AppComponent(context: Context) {
         CalendarSyncService(appDatabase.calendarSyncDao(), googleCalendarRepository, googleAuthRepository, planStorage) 
     }
 
-    val analysisRepository: AnalysisRepository by lazy { AnalysisRepository(runningRepository, analyzeRunData, analysisStorage, appScope) }
+    val analysisRepository: AnalysisRepository by lazy {
+        AnalysisRepositoryImpl(runningRepository, analyzeRunData, analysisStorage, appScope)
+    }
     val planRepository: PlanRepository by lazy {
-        PlanRepository(
-            analysisRepository, 
-            preferencesRepository, 
-            planStorage, 
-            runningRepository, 
-            historicalDataAnalyzer, 
-            weeklyTrainingPlanGenerator, 
-            analyzeRunData, 
+        PlanRepositoryImpl(
+            analysisRepository,
+            preferencesRepository,
+            planStorage,
+            runningRepository,
+            historicalDataAnalyzer,
+            weeklyTrainingPlanGenerator,
+            analyzeRunData,
             calendarSyncService,
             appScope
         )
@@ -182,7 +200,7 @@ class AppComponent(context: Context) {
     val authViewModelFactory: ViewModelProvider.Factory by lazy { AuthViewModel.provideFactory(stravaAuthRepository, stravaTokenManager) }
     val homeViewModelFactory: ViewModelProvider.Factory by lazy { HomeViewModel.provideFactory(analysisRepository, runningRepository, stravaTokenManager) }
     val historyViewModelFactory: ViewModelProvider.Factory by lazy { 
-        HistoryViewModel.provideFactory(runningRepository, analysisRepository) 
+        HistoryViewModel.provideFactory(runningRepository, analysisRepository)
     }
     val graphsViewModelFactory: ViewModelProvider.Factory by lazy { GraphsViewModel.provideFactory(analysisRepository) }
     val planViewModelFactory: ViewModelProvider.Factory by lazy {

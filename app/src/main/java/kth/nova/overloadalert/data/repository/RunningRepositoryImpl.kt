@@ -1,11 +1,12 @@
-package kth.nova.overloadalert.data
+package kth.nova.overloadalert.data.repository
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kth.nova.overloadalert.data.local.Run
 import kth.nova.overloadalert.data.local.RunDao
 import kth.nova.overloadalert.data.remote.StravaApiService
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kth.nova.overloadalert.data.remote.StravaTokenManager
+import kth.nova.overloadalert.domain.repository.RunningRepository
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -21,23 +22,23 @@ import java.time.ZoneOffset
  * - Providing access to locally stored runs as a reactive stream.
  * - Synchronizing local data with remote data, which involves fetching new activities, identifying
  *   discrepancies (missing or outdated entries), and performing necessary insertions or deletions.
- * - Managing sync timestamps via [kth.nova.overloadalert.data.remote.StravaTokenManager].
+ * - Managing sync timestamps via [StravaTokenManager].
  *
  * @property runDao The Data Access Object for local database operations on runs.
  * @property stravaApiService The service interface for communicating with the Strava API.
- * @property kth.nova.overloadalert.data.remote.StravaTokenManager A utility for managing authentication tokens and sync metadata.
+ * @property stravaTokenManager A utility for managing authentication tokens and sync metadata.
  */
-class RunningRepository(
+class RunningRepositoryImpl(
     private val runDao: RunDao,
     private val stravaApiService: StravaApiService,
     private val stravaTokenManager: StravaTokenManager
-) {
+) : RunningRepository {
 
-    fun getAllRuns(): Flow<List<Run>> {
+    override fun getAllRuns(): Flow<List<Run>> {
         return runDao.getAllRuns()
     }
 
-    suspend fun syncRuns(): Result<Boolean> {
+    override suspend fun syncRuns(): Result<Boolean> {
         return try {
             var dataChanged = false
             val localRunsSnapshot = getAllRuns().first()

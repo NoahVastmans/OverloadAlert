@@ -6,7 +6,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kth.nova.overloadalert.data.RunningRepository
+import kth.nova.overloadalert.domain.repository.RunningRepository
 import kth.nova.overloadalert.domain.repository.AnalysisRepository
 
 /**

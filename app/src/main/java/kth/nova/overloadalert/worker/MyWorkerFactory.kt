@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.work.ListenableWorker
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
-import kth.nova.overloadalert.data.RunningRepository
+import kth.nova.overloadalert.domain.repository.RunningRepository
 import kth.nova.overloadalert.domain.repository.AnalysisRepository
 
 /**
