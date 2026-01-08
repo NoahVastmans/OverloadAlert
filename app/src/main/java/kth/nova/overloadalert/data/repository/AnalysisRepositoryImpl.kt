@@ -88,7 +88,7 @@ class AnalysisRepositoryImpl(
 
                     // We recalculate the tail end of the analysis to ensure chronic load (28-day window)
                     // and other rolling metrics adjust correctly to the new data or new date.
-                    val overlapDate = today.minusDays(40)
+                    val overlapDate = today.minusDays(5)
                     val updatedCache = analyzeRunData.updateAnalysisFrom(
                         effectiveCache,
                         runs,

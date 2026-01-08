@@ -247,7 +247,7 @@ class AnalyzeRunData {
      * @param endDate The end date for the analysis timeline (usually Today).
      * @return A fresh [CachedAnalysis] object.
      */
-    fun performFullAnalysis(runs: List<Run>, startDate: LocalDate, endDate: LocalDate): CachedAnalysis {
+    private fun performFullAnalysis(runs: List<Run>, startDate: LocalDate, endDate: LocalDate): CachedAnalysis {
         // 1. Create daily load series with zeros added on days without run data
         val dailyLoads = createDailyLoadSeries(runs, startDate, endDate)
         // 2. Apply rolling caps (IQR filtering) to outliers

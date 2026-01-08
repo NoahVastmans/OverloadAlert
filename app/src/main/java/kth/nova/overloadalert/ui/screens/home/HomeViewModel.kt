@@ -54,7 +54,7 @@ class HomeViewModel(
             } else {
                 HomeUiState(
                     isLoading = false,
-                    riskCard = analysisData.runAnalysis?.combinedRisk?.let { mapper.mapRiskCard(it) },
+                    riskCard = analysisData.runAnalysis?.acwrAssessment?.let { mapper.mapRiskCard(it) },
                     recommendationCard = analysisData.runAnalysis?.let { mapper.mapRecommendationCard(it) },
                     lastSyncLabel = formatSyncTime(lastSyncTime)
                 )
