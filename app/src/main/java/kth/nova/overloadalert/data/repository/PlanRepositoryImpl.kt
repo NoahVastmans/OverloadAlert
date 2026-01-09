@@ -141,7 +141,14 @@ class PlanRepositoryImpl(
         context: PlanGenerationContext
     ): StateFlow<WeeklyTrainingPlan?> {
         val key = context.key
-        val runAnalysis = context.runAnalysis!!
+        
+        // Use analysis from the previous day to determine initial risk state.
+        // This prevents "undertraining" flags due to simply not having run yet today (which causes ACWR to dip).
+        // By looking at the end of yesterday, we get a more stable status for planning the week ahead.
+        val previousDay = key.planningDate.minusDays(1)
+        val previousDayUiData = analyzeRunData.deriveUiDataFromCache(context.cachedAnalysis, previousDay)
+        val runAnalysis = previousDayUiData.runAnalysis ?: context.runAnalysis!!
+        
         val runsForPlanning = context.runsForPlanning
 
         // historicalDataAnalyzer determines typical running days and volumes from the last 8 weeks.
@@ -254,7 +261,6 @@ class PlanRepositoryImpl(
             null -> Unit
         }
 
-        // Calculate target volumes
         val baseWeeklyVolume = runAnalysis.chronicLoad
         val baseMaxLongRun = runAnalysis.safeLongRun
         val adjustedWeeklyVolume = baseWeeklyVolume * acwrMultiplier
