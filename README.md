@@ -53,10 +53,7 @@ Unlike traditional apps that re-calculate your entire history on every launch, O
 The `WeeklyTrainingPlanGenerator` performs day-by-day simulations of future runs. It uses a specialized **Simulation Mode** that performs fast, in-memory math to predict future injury risk without touching the database, allowing for complex plan optimization in milliseconds.
 
 ### 3. Intelligent Synchronization
-The `RunningRepository` employs a smart fetch strategy. It bootstraps with a long history (160 days) but performs daily syncs fetching only the last 5 days of data, minimizing network traffic.
-
-### 4. Debounced Reactive Flows
-The app utilizes Kotlin Flow's `debounce` operator to handle rapid database updates during syncs, ensuring that heavy analysis logic is only triggered once the data has settled.
+The `RunningRepository` employs a smart fetch strategy. It bootstraps with a long history (120 days) but performs daily syncs fetching only the last 5 days of data, minimizing network traffic.
 
 ---
 
