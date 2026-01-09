@@ -47,7 +47,7 @@ class RunningRepositoryImpl(
             // Determine fetch window:
             // If DB is empty, fetch a long history (160 days) to bootstrap analysis.
             // If DB has data, only fetch recent days (5 days) to catch new runs or recent edits.
-            val daysToFetch = if (localRunsSnapshot.isEmpty()) 160L else 5L
+            val daysToFetch = if (localRunsSnapshot.isEmpty()) 120L else 5L
             val fetchSinceDate = LocalDate.now().minusDays(daysToFetch)
 
             val nowEpoch = LocalDate.now().plusDays(1).atStartOfDay().toEpochSecond(ZoneOffset.UTC)
